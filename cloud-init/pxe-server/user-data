@@ -1,0 +1,372 @@
+#cloud-config
+# PXE server bootstrap — injected into Pi OS image at build time via `make pxe-image`
+# Secrets (__TAILSCALE_AUTH_KEY__, __K3S_TOKEN__, __PXE_SERVER_IP__) are substituted
+# by the Makefile from .env — never hardcoded here.
+
+hostname: pi-pxe
+manage_etc_hosts: true
+locale: en_US.UTF-8
+timezone: America/New_York
+
+ssh_pwauth: false
+
+users:
+- name: pi
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  groups: users,adm,sudo
+  shell: /bin/bash
+  ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEG7XnSQNFrUqic84c61/SBe6xOGr5xd++bTAwVFewUj joeblack@MbA.local
+  ssh_import_id:
+  - 'gh:joeblackwaslike'
+
+packages:
+- dnsmasq
+- nfs-kernel-server
+- tftpd-hpa
+- pv
+- rsync
+- gdisk
+- parted
+package_update: true
+
+write_files:
+
+# ── dnsmasq PXE config ────────────────────────────────────────────────────────
+# Proxy DHCP mode: router handles IP assignment, dnsmasq handles PXE redirect.
+# The Pi 5 firmware expects a proxyDHCP offer on the same subnet to get
+# the TFTP server address and boot filename.
+- path: /etc/dnsmasq.d/pxe.conf
+  content: |
+    interface=eth0
+    bind-interfaces
+    no-resolv
+    no-hosts
+    dhcp-range=192.168.1.0,proxy
+    log-dhcp
+    pxe-service=0,"Raspberry Pi Boot",__PXE_SERVER_IP__
+
+# ── tftpd config ──────────────────────────────────────────────────────────────
+- path: /etc/default/tftpd-hpa
+  content: |
+    TFTP_USERNAME="tftp"
+    TFTP_DIRECTORY="/tftpboot"
+    TFTP_ADDRESS="0.0.0.0:69"
+    TFTP_OPTIONS="--secure --verbose"
+
+# ── NFS exports ───────────────────────────────────────────────────────────────
+- path: /etc/exports
+  content: |
+    /tftpboot/images/pi5-1  192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+    /tftpboot/images/pi5-2  192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+    /tftpboot/images/pi5-3  192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+
+# ── systemd .mount units for per-node boot/firmware ──────────────────────────
+# Each node's NFS root has an empty /boot/firmware directory. Cloud-init looks
+# there for user-data/meta-data. We bind-mount a per-node directory so each
+# node gets its own config (not the shared PXE root like the original manual setup).
+# These units must start before nfs-server so the bind mounts are active when
+# the nodes try to PXE boot.
+- path: /etc/systemd/system/tftpboot-images-pi5\x2d1-boot-firmware.mount
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Boot firmware bind mount for pi5-1 NFS root
+    After=local-fs.target
+    Before=nfs-server.service exportfs.service
+
+    [Mount]
+    What=/tftpboot/firmware/pi-1
+    Where=/tftpboot/images/pi5-1/boot/firmware
+    Type=none
+    Options=bind
+
+    [Install]
+    WantedBy=multi-user.target
+
+- path: /etc/systemd/system/tftpboot-images-pi5\x2d2-boot-firmware.mount
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Boot firmware bind mount for pi5-2 NFS root
+    After=local-fs.target
+    Before=nfs-server.service exportfs.service
+
+    [Mount]
+    What=/tftpboot/firmware/pi-2
+    Where=/tftpboot/images/pi5-2/boot/firmware
+    Type=none
+    Options=bind
+
+    [Install]
+    WantedBy=multi-user.target
+
+- path: /etc/systemd/system/tftpboot-images-pi5\x2d3-boot-firmware.mount
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Boot firmware bind mount for pi5-3 NFS root
+    After=local-fs.target
+    Before=nfs-server.service exportfs.service
+
+    [Mount]
+    What=/tftpboot/firmware/pi-3
+    Where=/tftpboot/images/pi5-3/boot/firmware
+    Type=none
+    Options=bind
+
+    [Install]
+    WantedBy=multi-user.target
+
+# ── NFS root setup script ─────────────────────────────────────────────────────
+# Called from runcmd after packages are installed.
+# Downloads Pi OS Lite, extracts it, populates 3 NFS roots, injects per-node
+# cloud-init, and writes per-node TFTP dirs.
+- path: /usr/local/bin/setup-nfs-roots.sh
+  permissions: "0755"
+  content: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    PXE_IP="__PXE_SERVER_IP__"
+    K3S_TOKEN="__K3S_TOKEN__"
+    TAILSCALE_KEY="__TAILSCALE_AUTH_KEY__"
+    TFTPROOT="/tftpboot"
+    IMG_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2025-05-13/2025-05-13-raspios-bookworm-arm64-lite.img.xz"
+    IMG_XZ="/var/cache/pi-os-lite.img.xz"
+    IMG="/var/cache/pi-os-lite.img"
+
+    NODES=(pi5-1 pi5-2 pi5-3)
+    # Short serials for TFTP dirs — fill in after first boot of each node
+    # Order matches NODES array: pi5-1, pi5-2, pi5-3
+    SERIALS=(c5013a79 fc1e11b7 6b91f29e)
+    HOSTNAMES=(pi-1 pi-2 pi-3)
+    K3S_ROLES=(server agent agent)
+    K3S_SERVER_IP="192.168.1.149"
+
+    log() { echo "[setup-nfs-roots] $*"; }
+
+    # Download image if needed
+    if [[ ! -f "$IMG" ]]; then
+      log "Downloading Pi OS Lite..."
+      curl -L --progress-bar -o "$IMG_XZ" "$IMG_URL"
+      log "Extracting..."
+      xz -dk "$IMG_XZ"
+      mv "${IMG_XZ%.xz}" "$IMG"
+    fi
+
+    # Loop-mount image
+    LOOP=$(losetup -f --show -P "$IMG")
+    BOOT_MNT=$(mktemp -d)
+    ROOT_MNT=$(mktemp -d)
+    mount "${LOOP}p1" "$BOOT_MNT"
+    mount "${LOOP}p2" "$ROOT_MNT"
+
+    cleanup() {
+      umount "$BOOT_MNT" 2>/dev/null || true
+      umount "$ROOT_MNT" 2>/dev/null || true
+      rmdir "$BOOT_MNT" "$ROOT_MNT" 2>/dev/null || true
+      losetup -d "$LOOP" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    for i in "${!NODES[@]}"; do
+      NODE="${NODES[$i]}"
+      SERIAL="${SERIALS[$i]}"
+      HOSTNAME="${HOSTNAMES[$i]}"
+      ROLE="${K3S_ROLES[$i]}"
+
+      log "Setting up NFS root for $NODE ($HOSTNAME)..."
+
+      # NFS root
+      NFS_ROOT="$TFTPROOT/images/$NODE"
+      mkdir -p "$NFS_ROOT"
+      rsync -aHAX --delete --exclude='/boot/firmware/*' \
+        "$ROOT_MNT/" "$NFS_ROOT/"
+
+      # Minimal fstab — no SD/NVMe entries; NFS root needs only proc
+      cat > "$NFS_ROOT/etc/fstab" << 'FSTAB'
+    proc  /proc  proc  defaults  0  0
+    FSTAB
+
+      # TFTP dir — firmware files from boot partition + node-specific cmdline.txt
+      TFTP_DIR="$TFTPROOT/$SERIAL"
+      mkdir -p "$TFTP_DIR"
+      rsync -a "$BOOT_MNT/" "$TFTP_DIR/"
+      cat > "$TFTP_DIR/cmdline.txt" << CMDLINE
+    console=serial0,115200 console=tty1 root=/dev/nfs nfsroot=$PXE_IP:$NFS_ROOT,vers=3 rw ip=dhcp rootwait
+    CMDLINE
+
+      # Per-node firmware dir (bind-mounted into NFS root at /boot/firmware)
+      FW_DIR="$TFTPROOT/firmware/$HOSTNAME"
+      mkdir -p "$FW_DIR"
+
+      # SSH enablement
+      touch "$FW_DIR/ssh"
+
+      # meta-data
+      cat > "$FW_DIR/meta-data" << META
+    instance-id: $HOSTNAME
+    local-hostname: $HOSTNAME
+    META
+
+      # user-data — server vs agent k3s config
+      if [[ "$ROLE" == "server" ]]; then
+        K3S_CONFIG=$(cat << K3SCONF
+      cluster-init: true
+      tls-san:
+      - $K3S_SERVER_IP
+      token: $K3S_TOKEN
+      disable:
+      - servicelb
+      - traefik
+      data-dir: /var/lib/rancher/k3s
+      node-label:
+      - node.kubernetes.io/instance-type=pi-5
+      kubelet-arg:
+      - "root-dir=/var/lib/rancher/k3s/kubelet"
+    K3SCONF
+    )
+        K3S_INSTALL_CMD="curl -sfL https://get.k3s.io | sh -"
+      else
+        K3S_CONFIG=$(cat << K3SCONF
+      server: https://$K3S_SERVER_IP:6443
+      token: $K3S_TOKEN
+      disable:
+      - servicelb
+      - traefik
+      data-dir: /var/lib/rancher/k3s
+      node-label:
+      - node.kubernetes.io/instance-type=pi-5
+      kubelet-arg:
+      - "root-dir=/var/lib/rancher/k3s/kubelet"
+    K3SCONF
+    )
+        K3S_INSTALL_CMD="curl -sfL https://get.k3s.io | K3S_URL=https://$K3S_SERVER_IP:6443 K3S_TOKEN=$K3S_TOKEN sh -"
+      fi
+
+      cat > "$FW_DIR/user-data" << USERDATA
+    #cloud-config
+    hostname: $HOSTNAME
+    manage_etc_hosts: true
+    locale: en_US.UTF-8
+    timezone: America/New_York
+
+    ssh_pwauth: false
+
+    users:
+    - name: pi
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
+      shell: /usr/bin/zsh
+      ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEG7XnSQNFrUqic84c61/SBe6xOGr5xd++bTAwVFewUj joeblack@MbA.local
+      ssh_import_id:
+      - 'gh:joeblackwaslike'
+
+    packages:
+    - vim
+    - zsh
+    - git
+    - jq
+    - nfs-common
+    - open-iscsi
+    - parted
+    package_update: true
+    package_reboot_if_required: false
+
+    write_files:
+    - path: /etc/rancher/k3s/config.yaml
+      permissions: "0600"
+      content: |
+    $K3S_CONFIG
+
+    - path: /etc/systemd/system/var-lib-rancher.mount
+      permissions: "0644"
+      content: |
+        [Unit]
+        Description=Mount NVMe p2 for k3s data
+        Before=k3s.service k3s-agent.service
+        After=local-fs.target
+
+        [Mount]
+        What=/dev/nvme0n1p2
+        Where=/var/lib/rancher
+        Type=ext4
+        Options=defaults,noatime
+
+        [Install]
+        WantedBy=multi-user.target
+
+    - path: /etc/sysctl.d/99-k3s.conf
+      permissions: "0644"
+      content: |
+        net.ipv4.ip_forward = 1
+        net.bridge.bridge-nf-call-iptables = 1
+        net.bridge.bridge-nf-call-ip6tables = 1
+        vm.overcommit_memory = 1
+        kernel.panic = 10
+        kernel.panic_on_oops = 1
+
+    runcmd:
+    # NVMe: partition only if not already done
+    - |
+      if ! lsblk /dev/nvme0n1p2 &>/dev/null; then
+        parted --script /dev/nvme0n1 mklabel gpt
+        parted --script /dev/nvme0n1 mkpart primary fat32  1MiB    513MiB
+        parted --script /dev/nvme0n1 mkpart primary ext4   513MiB  64513MiB
+        parted --script /dev/nvme0n1 mkpart primary        64513MiB 100%
+        parted --script /dev/nvme0n1 set 1 esp on
+        partprobe /dev/nvme0n1
+        sleep 2
+        mkfs.vfat -F 32 -n system-boot /dev/nvme0n1p1
+        mkfs.ext4 -L writable /dev/nvme0n1p2
+      fi
+    - systemctl daemon-reload
+    - systemctl enable --now var-lib-rancher.mount
+    - sysctl -p /etc/sysctl.d/99-k3s.conf
+    - curl -fsSL https://tailscale.com/install.sh | sh
+    - tailscale up --authkey=$TAILSCALE_KEY --hostname=$HOSTNAME
+    - $K3S_INSTALL_CMD
+    USERDATA
+
+      log "$NODE done."
+    done
+
+    log "All NFS roots ready."
+
+# ── cloud-init node user-data templates (standalone copies for reference) ────
+# The setup-nfs-roots.sh script generates these dynamically, but these are
+# kept here as human-readable source of truth.
+
+runcmd:
+# Create tftpboot directory tree
+- mkdir -p /tftpboot/images/pi5-{1,2,3} /tftpboot/firmware/pi-{1,2,3}
+
+# Enable systemd mount units (written above via write_files)
+- systemctl daemon-reload
+- systemctl enable tftpboot-images-pi5\x2d1-boot-firmware.mount
+- systemctl enable tftpboot-images-pi5\x2d2-boot-firmware.mount
+- systemctl enable tftpboot-images-pi5\x2d3-boot-firmware.mount
+- systemctl start tftpboot-images-pi5\x2d1-boot-firmware.mount
+- systemctl start tftpboot-images-pi5\x2d2-boot-firmware.mount
+- systemctl start tftpboot-images-pi5\x2d3-boot-firmware.mount
+
+# Enable PXE services
+- systemctl enable tftpd-hpa nfs-kernel-server dnsmasq
+- systemctl restart tftpd-hpa nfs-kernel-server dnsmasq
+
+# Populate NFS roots from Pi OS image (takes ~10 min on first boot)
+- /usr/local/bin/setup-nfs-roots.sh >> /var/log/setup-nfs-roots.log 2>&1
+
+# Re-export after NFS roots are populated
+- exportfs -ra
+- systemctl restart nfs-kernel-server
+
+# Tailscale
+- curl -fsSL https://tailscale.com/install.sh | sh
+- tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-pxe
+
+# Sysctl for routing (needed for PXE proxy DHCP to work)
+- echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-pxe.conf
+- sysctl -p /etc/sysctl.d/99-pxe.conf

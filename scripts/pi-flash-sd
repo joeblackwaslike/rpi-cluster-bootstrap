@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# pi-flash-sd — Safely flash an image to an SD card
+# Usage: pi-flash-sd <image-path> [device]
+#
+# If device is not specified, lists removable block devices for selection.
+# Never assumes /dev/sda — always confirms before writing.
+set -euo pipefail
+
+IMAGE="${1:-}"
+DEVICE="${2:-}"
+
+usage() {
+  echo "Usage: $(basename "$0") <image-path> [device]" >&2
+  echo "  image-path  Path to .img file (not /tmp — use a persistent location)" >&2
+  echo "  device      Optional: /dev/diskN (macOS) or /dev/sdX (Linux)" >&2
+  exit 1
+}
+
+[[ -z "$IMAGE" ]] && usage
+[[ ! -f "$IMAGE" ]] && { echo "ERROR: Image not found: $IMAGE" >&2; exit 1; }
+
+# Warn if image is in /tmp
+if [[ "$IMAGE" == /tmp/* ]]; then
+  echo "WARNING: Image is in /tmp which may be cleared on reboot." >&2
+  echo "         Consider copying to ~/Downloads/ or /var/ first." >&2
+  read -rp "Continue anyway? [y/N] " confirm
+  [[ "$confirm" != [yY] ]] && exit 1
+fi
+
+# Detect OS for device naming
+OS=$(uname -s)
+
+if [[ -z "$DEVICE" ]]; then
+  echo "Available removable devices:"
+  if [[ "$OS" == "Darwin" ]]; then
+    diskutil list | grep -E "external|/dev/disk" || true
+    read -rp "Enter device (e.g. /dev/disk4): " DEVICE
+  else
+    lsblk -d -o NAME,SIZE,MODEL,RM | awk 'NR==1 || $4=="1"'
+    read -rp "Enter device (e.g. /dev/sdb): " DEVICE
+  fi
+fi
+
+[[ -z "$DEVICE" ]] && { echo "ERROR: No device specified." >&2; exit 1; }
+[[ ! -b "$DEVICE" ]] && { echo "ERROR: Not a block device: $DEVICE" >&2; exit 1; }
+
+IMAGE_SIZE=$(du -sh "$IMAGE" | cut -f1)
+echo ""
+echo "  Image:   $IMAGE ($IMAGE_SIZE)"
+echo "  Device:  $DEVICE"
+echo ""
+read -rp "Confirm flash? THIS WILL ERASE $DEVICE [y/N] " confirm
+[[ "$confirm" != [yY] ]] && { echo "Aborted."; exit 0; }
+
+echo "==> Unmounting ${DEVICE}..."
+if [[ "$OS" == "Darwin" ]]; then
+  diskutil unmountDisk "$DEVICE" || true
+  RAW_DEVICE="${DEVICE/\/dev\/disk//dev/rdisk}"
+else
+  umount "${DEVICE}"* 2>/dev/null || true
+  RAW_DEVICE="$DEVICE"
+fi
+
+echo "==> Flashing..."
+if command -v pv &>/dev/null; then
+  pv "$IMAGE" | sudo dd of="$RAW_DEVICE" bs=4M conv=fsync
+else
+  sudo dd if="$IMAGE" of="$RAW_DEVICE" bs=4M status=progress conv=fsync
+fi
+
+echo "==> Syncing..."
+sync
+
+if [[ "$OS" == "Darwin" ]]; then
+  diskutil eject "$DEVICE" 2>/dev/null || true
+fi
+
+echo "Done. You can safely remove the SD card."

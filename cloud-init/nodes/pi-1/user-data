@@ -1,0 +1,102 @@
+#cloud-config
+# pi-1 — k3s server (cluster-init)
+# Secrets: __TAILSCALE_AUTH_KEY__, __K3S_TOKEN__ substituted by setup-nfs-roots.sh
+
+hostname: pi-1
+manage_etc_hosts: true
+locale: en_US.UTF-8
+timezone: America/New_York
+
+ssh_pwauth: false
+
+users:
+- name: pi
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
+  shell: /usr/bin/zsh
+  ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEG7XnSQNFrUqic84c61/SBe6xOGr5xd++bTAwVFewUj joeblack@MbA.local
+  ssh_import_id:
+  - 'gh:joeblackwaslike'
+
+packages:
+- vim
+- zsh
+- git
+- jq
+- nfs-common
+- open-iscsi
+- parted
+- lvm2
+package_update: true
+package_reboot_if_required: false
+
+write_files:
+
+# k3s server config — pi-1 bootstraps the cluster
+- path: /etc/rancher/k3s/config.yaml
+  permissions: "0600"
+  content: |
+    cluster-init: true
+    tls-san:
+    - 192.168.1.149
+    - pi-1
+    token: __K3S_TOKEN__
+    disable:
+    - servicelb
+    - traefik
+    data-dir: /var/lib/rancher/k3s
+    node-label:
+    - node.kubernetes.io/instance-type=pi-5
+    kubelet-arg:
+    - "root-dir=/var/lib/rancher/k3s/kubelet"
+
+# NVMe p2 (ext4, 63.5G) used for k3s data; p3 (LVM) left for Longhorn
+- path: /etc/systemd/system/var-lib-rancher.mount
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Mount NVMe p2 for k3s data
+    Before=k3s.service
+    After=local-fs.target
+
+    [Mount]
+    What=/dev/nvme0n1p2
+    Where=/var/lib/rancher
+    Type=ext4
+    Options=defaults,noatime
+
+    [Install]
+    WantedBy=multi-user.target
+
+- path: /etc/sysctl.d/99-k3s.conf
+  permissions: "0644"
+  content: |
+    net.ipv4.ip_forward = 1
+    net.bridge.bridge-nf-call-iptables = 1
+    net.bridge.bridge-nf-call-ip6tables = 1
+    vm.overcommit_memory = 1
+    kernel.panic = 10
+    kernel.panic_on_oops = 1
+
+runcmd:
+# Partition NVMe only if not already done
+- |
+  if ! lsblk /dev/nvme0n1p2 &>/dev/null; then
+    parted --script /dev/nvme0n1 mklabel gpt
+    parted --script /dev/nvme0n1 mkpart primary fat32  1MiB    513MiB
+    parted --script /dev/nvme0n1 mkpart primary ext4   513MiB  64513MiB
+    parted --script /dev/nvme0n1 mkpart primary        64513MiB 100%
+    parted --script /dev/nvme0n1 set 1 esp on
+    partprobe /dev/nvme0n1
+    sleep 2
+    mkfs.vfat -F 32 -n system-boot /dev/nvme0n1p1
+    mkfs.ext4 -L writable /dev/nvme0n1p2
+    pvcreate /dev/nvme0n1p3
+  fi
+- systemctl daemon-reload
+- systemctl enable --now var-lib-rancher.mount
+- sysctl -p /etc/sysctl.d/99-k3s.conf
+- curl -fsSL https://tailscale.com/install.sh | sh
+- tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-1
+- curl -sfL https://get.k3s.io | sh -

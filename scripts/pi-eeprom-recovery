@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# pi-eeprom-recovery — Download Pi 5 EEPROM recovery image and flash to SD
+#
+# IMPORTANT: Uses 2712 variant (Pi 5). 2711 is Pi 4 and silently does nothing on Pi 5.
+# Downloads to ~/Downloads (NOT /tmp which is a small tmpfs).
+#
+# Usage: pi-eeprom-recovery [--download-only] [--flash-only <image>]
+set -euo pipefail
+
+DOWNLOAD_DIR="$HOME/Downloads/pi-eeprom"
+BASE_URL="https://github.com/raspberrypi/rpi-eeprom/releases/latest/download"
+# Must be 2712 for Pi 5 — 2711 is Pi 4 and silently fails
+VARIANT="2712"
+KNOWN_IMAGE="rpi-boot-eeprom-recovery-2025-12-08-${VARIANT}-sd.img"
+
+DOWNLOAD_ONLY=false
+FLASH_ONLY=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --download-only) DOWNLOAD_ONLY=true ;;
+    --flash-only)    FLASH_ONLY="$2"; shift ;;
+    -h|--help)
+      echo "Usage: $(basename "$0") [--download-only] [--flash-only <image>]"
+      echo ""
+      echo "  --download-only   Download the recovery image but do not flash"
+      echo "  --flash-only IMG  Skip download, flash the specified image directly"
+      echo ""
+      echo "Pi 5 EEPROM recovery procedure:"
+      echo "  1. Run this script to flash recovery image to SD card"
+      echo "  2. Insert SD into Pi 5 and power on"
+      echo "  3. Pi flashes green LED pattern then powers off automatically"
+      echo "  4. Remove SD card and reboot from intended device"
+      echo ""
+      echo "NOTE: Do NOT attempt EEPROM recovery from within HAOS — it lacks rpi-eeprom tools."
+      exit 0
+      ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+if [[ -n "$FLASH_ONLY" ]]; then
+  echo "==> Flashing existing image: $FLASH_ONLY"
+  pi-flash-sd "$FLASH_ONLY"
+  print_post_flash_instructions
+  exit 0
+fi
+
+print_post_flash_instructions() {
+  echo ""
+  echo "==> Next steps:"
+  echo "   1. Insert the SD card into the Pi 5"
+  echo "   2. Power on — the green LED will flash a pattern, then the Pi will power off"
+  echo "   3. Remove the SD card"
+  echo "   4. Power on again — it will boot from the configured boot device"
+  echo "   5. Verify: vcgencmd bootloader_version && vcgencmd bootloader_config"
+}
+
+mkdir -p "$DOWNLOAD_DIR"
+
+# Check if already downloaded
+IMAGE_PATH="${DOWNLOAD_DIR}/${KNOWN_IMAGE}"
+if [[ -f "$IMAGE_PATH" ]]; then
+  echo "==> Found existing image: $IMAGE_PATH"
+  ls -lh "$IMAGE_PATH"
+else
+  echo "==> Downloading Pi 5 EEPROM recovery image (${VARIANT} variant)..."
+  echo "    Saving to: $DOWNLOAD_DIR (NOT /tmp)"
+  # Try to find latest from GitHub releases page
+  if command -v curl &>/dev/null; then
+    curl -fL --progress-bar \
+      "${BASE_URL}/${KNOWN_IMAGE}" \
+      -o "$IMAGE_PATH" || {
+      echo ""
+      echo "ERROR: Download failed. Check the URL or download manually from:" >&2
+      echo "  https://github.com/raspberrypi/rpi-eeprom/releases" >&2
+      echo "  Look for: *-${VARIANT}-sd.img (NOT 2711 — that is Pi 4)" >&2
+      exit 1
+    }
+  else
+    echo "ERROR: curl not found. Download manually:" >&2
+    echo "  https://github.com/raspberrypi/rpi-eeprom/releases" >&2
+    echo "  File: *-${VARIANT}-sd.img" >&2
+    exit 1
+  fi
+fi
+
+echo "==> Image ready: $IMAGE_PATH ($(du -sh "$IMAGE_PATH" | cut -f1))"
+
+if $DOWNLOAD_ONLY; then
+  echo "Download complete. Run: pi-flash-sd $IMAGE_PATH"
+  exit 0
+fi
+
+echo ""
+pi-flash-sd "$IMAGE_PATH"
+print_post_flash_instructions

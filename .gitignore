@@ -1,0 +1,8 @@
+old/
+.env
+img/
+*.img
+*.img.xz
+*.zip
+.vagrant/
+.DS_Store
