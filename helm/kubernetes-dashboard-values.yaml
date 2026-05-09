@@ -1,0 +1,8 @@
+USER-SUPPLIED VALUES:
+app:
+  ingress:
+    enabled: false
+cert-manager:
+  enabled: false
+nginx:
+  enabled: false

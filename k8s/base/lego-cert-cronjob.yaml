@@ -1,0 +1,110 @@
+---
+# Wildcard TLS cert renewal via lego + Porkbun DNS01
+# Run: kubectl create -f this to force an immediate renewal
+# Auto-runs: 2:30 AM on the 1st of each month
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lego-cert-renewal
+  namespace: cert-manager
+spec:
+  schedule: "30 2 1 * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: lego-certbot
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1001
+          initContainers:
+          - name: lego
+            image: goacme/lego:latest
+            securityContext:
+              runAsUser: 0
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              /lego \
+                --email=joeblackwaslike@gmail.com \
+                --dns=porkbun \
+                --domains=*.k8s.joeblack.nyc \
+                --path=/data \
+                --accept-tos \
+                renew --days 30 || \
+              /lego \
+                --email=joeblackwaslike@gmail.com \
+                --dns=porkbun \
+                --domains=*.k8s.joeblack.nyc \
+                --path=/data \
+                --accept-tos \
+                run
+              chmod -R 755 /data/
+            env:
+            - name: PORKBUN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porkbun-lego-creds
+                  key: PORKBUN_API_KEY
+            - name: PORKBUN_SECRET_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: porkbun-lego-creds
+                  key: PORKBUN_SECRET_API_KEY
+            volumeMounts:
+            - name: data
+              mountPath: /data
+          containers:
+          - name: store
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -e
+              CERT=$(find /data/certificates -name '*.crt' ! -name '*.issuer.crt' | head -1)
+              KEY=$(find /data/certificates -name '*.key' | head -1)
+              echo "Cert: $CERT ($(wc -c < $CERT) bytes)"
+              for ns in traefik monitoring oauth2-proxy kubernetes-dashboard longhorn-system; do
+                kubectl create secret tls wildcard-k8s-tls \
+                  --cert=$CERT --key=$KEY --namespace=$ns \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                echo "$ns: wildcard-k8s-tls updated"
+              done
+              echo "Renewal complete"
+            volumeMounts:
+            - name: data
+              mountPath: /data
+          volumes:
+          - name: data
+            emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lego-certbot
+  namespace: cert-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lego-certbot
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "update", "patch", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lego-certbot
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lego-certbot
+subjects:
+- kind: ServiceAccount
+  name: lego-certbot
+  namespace: cert-manager

@@ -1,0 +1,218 @@
+apiVersion: v1
+items:
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"traefik.ingress.kubernetes.io/router.middlewares":"oauth2-proxy/github-auth@kubernetescrd","traefik.ingress.kubernetes.io/router.tls":"true"},"name":"kubernetes-dashboard","namespace":"kubernetes-dashboard"},"spec":{"ingressClassName":"traefik","rules":[{"host":"dashboard.k8s.joeblack.nyc","http":{"paths":[{"backend":{"service":{"name":"kubernetes-dashboard-kong-proxy","port":{"number":443}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["dashboard.k8s.joeblack.nyc"],"secretName":"wildcard-k8s-tls"}]}}
+      traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy/github-auth@kubernetescrd
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    creationTimestamp: "2026-05-09T10:17:01Z"
+    generation: 1
+    name: kubernetes-dashboard
+    namespace: kubernetes-dashboard
+    resourceVersion: "5737506"
+    uid: 0f0129c9-5a48-4554-9a10-4ada680848e0
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: dashboard.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: kubernetes-dashboard-kong-proxy
+              port:
+                number: 443
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - dashboard.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"traefik.ingress.kubernetes.io/router.middlewares":"oauth2-proxy/github-auth@kubernetescrd"},"name":"longhorn-ui","namespace":"longhorn-system"},"spec":{"ingressClassName":"traefik","rules":[{"host":"longhorn.k8s.joeblack.nyc","http":{"paths":[{"backend":{"service":{"name":"longhorn-frontend","port":{"number":80}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["longhorn.k8s.joeblack.nyc"],"secretName":"wildcard-k8s-tls"}]}}
+      traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy/github-auth@kubernetescrd
+    creationTimestamp: "2026-05-09T10:17:01Z"
+    generation: 1
+    name: longhorn-ui
+    namespace: longhorn-system
+    resourceVersion: "5737504"
+    uid: 1c2881ea-f693-43ca-b44c-7e885d62f199
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: longhorn.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: longhorn-frontend
+              port:
+                number: 80
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - longhorn.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"traefik.ingress.kubernetes.io/router.middlewares":"oauth2-proxy/github-auth@kubernetescrd"},"name":"alertmanager","namespace":"monitoring"},"spec":{"ingressClassName":"traefik","rules":[{"host":"alertmanager.k8s.joeblack.nyc","http":{"paths":[{"backend":{"service":{"name":"kube-prometheus-stack-alertmanager","port":{"number":9093}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["alertmanager.k8s.joeblack.nyc"],"secretName":"wildcard-k8s-tls"}]}}
+      traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy/github-auth@kubernetescrd
+    creationTimestamp: "2026-05-09T10:17:01Z"
+    generation: 1
+    name: alertmanager
+    namespace: monitoring
+    resourceVersion: "5737502"
+    uid: b0b47e0c-2ac9-4891-b275-7cb9c9eb74ad
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: alertmanager.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: kube-prometheus-stack-alertmanager
+              port:
+                number: 9093
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - alertmanager.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"traefik.ingress.kubernetes.io/router.middlewares":"oauth2-proxy/github-auth@kubernetescrd"},"name":"grafana","namespace":"monitoring"},"spec":{"ingressClassName":"traefik","rules":[{"host":"grafana.k8s.joeblack.nyc","http":{"paths":[{"backend":{"service":{"name":"kube-prometheus-stack-grafana","port":{"number":80}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["grafana.k8s.joeblack.nyc"],"secretName":"wildcard-k8s-tls"}]}}
+      traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy/github-auth@kubernetescrd
+    creationTimestamp: "2026-05-09T10:17:01Z"
+    generation: 1
+    name: grafana
+    namespace: monitoring
+    resourceVersion: "5737498"
+    uid: 3d6bef1d-c945-4d88-96a0-4be3f93240e9
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: grafana.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: kube-prometheus-stack-grafana
+              port:
+                number: 80
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - grafana.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"traefik.ingress.kubernetes.io/router.middlewares":"oauth2-proxy/github-auth@kubernetescrd"},"name":"prometheus","namespace":"monitoring"},"spec":{"ingressClassName":"traefik","rules":[{"host":"prometheus.k8s.joeblack.nyc","http":{"paths":[{"backend":{"service":{"name":"kube-prometheus-stack-prometheus","port":{"number":9090}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["prometheus.k8s.joeblack.nyc"],"secretName":"wildcard-k8s-tls"}]}}
+      traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy/github-auth@kubernetescrd
+    creationTimestamp: "2026-05-09T10:17:01Z"
+    generation: 1
+    name: prometheus
+    namespace: monitoring
+    resourceVersion: "5737500"
+    uid: 6a71d808-d6c4-45a7-a4d3-4d53eb1af490
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: prometheus.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: kube-prometheus-stack-prometheus
+              port:
+                number: 9090
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - prometheus.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: oauth2-proxy
+      meta.helm.sh/release-namespace: oauth2-proxy
+    creationTimestamp: "2026-05-09T07:27:15Z"
+    generation: 2
+    labels:
+      app: oauth2-proxy
+      app.kubernetes.io/component: authentication-proxy
+      app.kubernetes.io/instance: oauth2-proxy
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: oauth2-proxy
+      app.kubernetes.io/part-of: oauth2-proxy
+      app.kubernetes.io/version: 7.15.2
+      helm.sh/chart: oauth2-proxy-10.4.3
+    name: oauth2-proxy
+    namespace: oauth2-proxy
+    resourceVersion: "5738009"
+    uid: 79a0667e-4ee8-4c3d-b2a4-a8378f2adf4b
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: oauth.k8s.joeblack.nyc
+      http:
+        paths:
+        - backend:
+            service:
+              name: oauth2-proxy
+              port:
+                number: 80
+          path: /
+          pathType: ImplementationSpecific
+    tls:
+    - hosts:
+      - oauth.k8s.joeblack.nyc
+      secretName: wildcard-k8s-tls
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.10
+kind: List
+metadata:
+  resourceVersion: ""

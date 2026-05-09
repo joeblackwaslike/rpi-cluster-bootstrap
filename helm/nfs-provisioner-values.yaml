@@ -1,0 +1,9 @@
+USER-SUPPLIED VALUES:
+nfs:
+  path: /mnt/k8s-storage/nfs-provisioner
+  server: 192.168.1.75
+storageClass:
+  archiveOnDelete: true
+  defaultClass: false
+  name: nfs-storage
+  reclaimPolicy: Retain

@@ -1,0 +1,139 @@
+apiVersion: v1
+items:
+- apiVersion: cert-manager.io/v1
+  kind: ClusterIssuer
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"cert-manager.io/v1","kind":"ClusterIssuer","metadata":{"annotations":{},"name":"letsencrypt-prod"},"spec":{"acme":{"email":"joeblackwaslike@gmail.com","privateKeySecretRef":{"name":"letsencrypt-prod-key"},"server":"https://acme-v02.api.letsencrypt.org/directory","solvers":[{"http01":{"ingress":{"ingressClassName":"traefik"}}}]}}}
+    creationTimestamp: "2026-05-09T03:02:47Z"
+    generation: 1
+    name: letsencrypt-prod
+    resourceVersion: "5620657"
+    uid: c2095099-de52-4cfc-9375-ac6dbc7ab686
+  spec:
+    acme:
+      email: joeblackwaslike@gmail.com
+      privateKeySecretRef:
+        name: letsencrypt-prod-key
+      server: https://acme-v02.api.letsencrypt.org/directory
+      solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+  status:
+    acme:
+      lastPrivateKeyHash: q70S9QTM1KNmKi7Mod9UEti3ZJNHbW03ZBo+AmgPfiw=
+      lastRegisteredEmail: joeblackwaslike@gmail.com
+    conditions:
+    - lastTransitionTime: "2026-05-09T03:02:49Z"
+      message: The ACME account was registered with the ACME server
+      observedGeneration: 1
+      reason: ACMEAccountRegistered
+      status: "True"
+      type: Ready
+- apiVersion: cert-manager.io/v1
+  kind: ClusterIssuer
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"cert-manager.io/v1","kind":"ClusterIssuer","metadata":{"annotations":{},"name":"letsencrypt-prod-dns"},"spec":{"acme":{"email":"joeblackwaslike@gmail.com","privateKeySecretRef":{"name":"letsencrypt-prod-dns-key"},"server":"https://acme-v02.api.letsencrypt.org/directory","solvers":[{"dns01":{"webhook":{"config":{"url":"http://porkbun-webhook.cert-manager-porkbun.svc.cluster.local"},"groupName":"porkbun.joeblack.nyc","solverName":"porkbun"}}}]}}}
+    creationTimestamp: "2026-05-09T08:36:40Z"
+    generation: 1
+    name: letsencrypt-prod-dns
+    resourceVersion: "5708825"
+    uid: a34e492d-f92d-4815-acd9-fa7d4418a54f
+  spec:
+    acme:
+      email: joeblackwaslike@gmail.com
+      privateKeySecretRef:
+        name: letsencrypt-prod-dns-key
+      server: https://acme-v02.api.letsencrypt.org/directory
+      solvers:
+      - dns01:
+          webhook:
+            config:
+              url: http://porkbun-webhook.cert-manager-porkbun.svc.cluster.local
+            groupName: porkbun.joeblack.nyc
+            solverName: porkbun
+  status:
+    acme:
+      lastPrivateKeyHash: +5L5gy0qEDB9WadAD0Jg3JANe/r32+q2KdGlCttde7M=
+      lastRegisteredEmail: joeblackwaslike@gmail.com
+    conditions:
+    - lastTransitionTime: "2026-05-09T08:36:41Z"
+      message: The ACME account was registered with the ACME server
+      observedGeneration: 1
+      reason: ACMEAccountRegistered
+      status: "True"
+      type: Ready
+- apiVersion: cert-manager.io/v1
+  kind: ClusterIssuer
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"cert-manager.io/v1","kind":"ClusterIssuer","metadata":{"annotations":{},"name":"letsencrypt-staging"},"spec":{"acme":{"email":"joeblackwaslike@gmail.com","privateKeySecretRef":{"name":"letsencrypt-staging-key"},"server":"https://acme-staging-v02.api.letsencrypt.org/directory","solvers":[{"http01":{"ingress":{"ingressClassName":"traefik"}}}]}}}
+    creationTimestamp: "2026-05-09T03:02:47Z"
+    generation: 1
+    name: letsencrypt-staging
+    resourceVersion: "5620656"
+    uid: bd8f2b7f-7ca3-4685-9f91-5e1c3017d701
+  spec:
+    acme:
+      email: joeblackwaslike@gmail.com
+      privateKeySecretRef:
+        name: letsencrypt-staging-key
+      server: https://acme-staging-v02.api.letsencrypt.org/directory
+      solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+  status:
+    acme:
+      lastPrivateKeyHash: OK01d+5xIMCUAAYG/aiDHAMxpQaUyZoXCfG1W2Tobn0=
+      lastRegisteredEmail: joeblackwaslike@gmail.com
+    conditions:
+    - lastTransitionTime: "2026-05-09T03:02:48Z"
+      message: The ACME account was registered with the ACME server
+      observedGeneration: 1
+      reason: ACMEAccountRegistered
+      status: "True"
+      type: Ready
+- apiVersion: cert-manager.io/v1
+  kind: ClusterIssuer
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"cert-manager.io/v1","kind":"ClusterIssuer","metadata":{"annotations":{},"name":"letsencrypt-staging-dns"},"spec":{"acme":{"email":"joeblackwaslike@gmail.com","privateKeySecretRef":{"name":"letsencrypt-staging-dns-key"},"server":"https://acme-staging-v02.api.letsencrypt.org/directory","solvers":[{"dns01":{"webhook":{"config":{"url":"http://porkbun-webhook.cert-manager-porkbun.svc.cluster.local"},"groupName":"porkbun.joeblack.nyc","solverName":"porkbun"}}}]}}}
+    creationTimestamp: "2026-05-09T08:36:40Z"
+    generation: 1
+    name: letsencrypt-staging-dns
+    resourceVersion: "5708820"
+    uid: 1d999ea6-e3b4-435f-9198-22757c23a268
+  spec:
+    acme:
+      email: joeblackwaslike@gmail.com
+      privateKeySecretRef:
+        name: letsencrypt-staging-dns-key
+      server: https://acme-staging-v02.api.letsencrypt.org/directory
+      solvers:
+      - dns01:
+          webhook:
+            config:
+              url: http://porkbun-webhook.cert-manager-porkbun.svc.cluster.local
+            groupName: porkbun.joeblack.nyc
+            solverName: porkbun
+  status:
+    acme:
+      lastPrivateKeyHash: zWj51z1FlvGx6GglEg1F2umczTB6wCIsDkmOdRFOkJs=
+      lastRegisteredEmail: joeblackwaslike@gmail.com
+    conditions:
+    - lastTransitionTime: "2026-05-09T08:36:40Z"
+      message: The ACME account was registered with the ACME server
+      observedGeneration: 1
+      reason: ACMEAccountRegistered
+      status: "True"
+      type: Ready
+kind: List
+metadata:
+  resourceVersion: ""

@@ -1,0 +1,28 @@
+USER-SUPPLIED VALUES:
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          resources:
+            requests:
+              storage: 2Gi
+          storageClassName: longhorn
+grafana:
+  adminPassword: changeme
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClassName: longhorn
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          resources:
+            requests:
+              storage: 10Gi
+          storageClassName: longhorn

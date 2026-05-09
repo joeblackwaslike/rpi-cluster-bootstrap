@@ -1,0 +1,204 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: "6"
+    driver.longhorn.io/git-commit: b1f0987b04144b24b5115ddf8ce31c29dfa69828
+    driver.longhorn.io/version: v1.11.2
+    longhorn.io/last-applied-tolerations: '[]'
+  creationTimestamp: "2026-05-09T03:46:51Z"
+  generation: 6
+  labels:
+    longhorn.io/managed-by: longhorn-manager
+  name: longhorn-csi-plugin
+  namespace: longhorn-system
+  resourceVersion: "5745433"
+  uid: 47df7678-79f4-4fa1-86fc-351d69d68e80
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: longhorn-csi-plugin
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-05-09T03:18:22-04:00"
+      labels:
+        app: longhorn-csi-plugin
+    spec:
+      containers:
+      - args:
+        - --v=2
+        - --csi-address=$(ADDRESS)
+        - --kubelet-registration-path=/var/lib/rancher/k3s/kubelet/plugins/driver.longhorn.io/csi.sock
+        env:
+        - name: ADDRESS
+          value: /csi/csi.sock
+        image: docker.io/longhornio/csi-node-driver-registrar:v2.16.0-20260428
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - rm -rf /registration/driver.longhorn.io /registration/driver.longhorn.io-reg.sock
+                /csi//*
+        name: node-driver-registrar
+        resources: {}
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /csi/
+          name: socket-dir
+        - mountPath: /registration
+          name: registration-dir
+      - args:
+        - --v=4
+        - --csi-address=/csi/csi.sock
+        image: docker.io/longhornio/livenessprobe:v2.18.0-20260428
+        imagePullPolicy: IfNotPresent
+        name: longhorn-liveness-probe
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /csi/
+          name: socket-dir
+      - args:
+        - longhorn-manager
+        - -d
+        - csi
+        - --nodeid=$(NODE_ID)
+        - --endpoint=$(CSI_ENDPOINT)
+        - --drivername=driver.longhorn.io
+        - --manager-url=http://longhorn-backend:9500/v1
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix:///csi/csi.sock
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        image: docker.io/longhornio/longhorn-manager:v1.11.2
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - rm -f /csi//*
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9808
+            scheme: HTTP
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 4
+        name: longhorn-csi-plugin
+        ports:
+        - containerPort: 9808
+          protocol: TCP
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+          privileged: true
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /healthz
+            port: 9808
+            scheme: HTTP
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 4
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /csi/
+          name: socket-dir
+        - mountPath: /var/lib/rancher/k3s/kubelet/plugins/kubernetes.io/csi
+          mountPropagation: Bidirectional
+          name: kubernetes-csi-dir
+        - mountPath: /var/lib/rancher/k3s/kubelet/pods
+          mountPropagation: Bidirectional
+          name: pods-mount-dir
+        - mountPath: /dev
+          name: host-dev
+        - mountPath: /host/proc
+          name: host-proc
+        - mountPath: /sys
+          name: host-sys
+        - mountPath: /lib/modules
+          name: lib-modules
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      priorityClassName: longhorn-critical
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: longhorn-service-account
+      serviceAccountName: longhorn-service-account
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - hostPath:
+          path: /var/lib/rancher/k3s/kubelet/plugins/kubernetes.io/csi
+          type: DirectoryOrCreate
+        name: kubernetes-csi-dir
+      - hostPath:
+          path: /var/lib/rancher/k3s/kubelet/plugins_registry
+          type: DirectoryOrCreate
+        name: registration-dir
+      - hostPath:
+          path: /var/lib/rancher/k3s/kubelet/plugins/driver.longhorn.io
+          type: DirectoryOrCreate
+        name: socket-dir
+      - hostPath:
+          path: /var/lib/rancher/k3s/kubelet/pods
+          type: DirectoryOrCreate
+        name: pods-mount-dir
+      - hostPath:
+          path: /dev
+          type: ""
+        name: host-dev
+      - hostPath:
+          path: /proc
+          type: ""
+        name: host-proc
+      - hostPath:
+          path: /sys
+          type: ""
+        name: host-sys
+      - hostPath:
+          path: /lib/modules
+          type: ""
+        name: lib-modules
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+status:
+  currentNumberScheduled: 3
+  desiredNumberScheduled: 3
+  numberAvailable: 3
+  numberMisscheduled: 0
+  numberReady: 3
+  observedGeneration: 6
+  updatedNumberScheduled: 3

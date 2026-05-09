@@ -1,0 +1,10 @@
+USER-SUPPLIED VALUES:
+grafana:
+  enabled: false
+loki:
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: longhorn
+promtail:
+  enabled: true

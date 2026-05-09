@@ -1,0 +1,6 @@
+USER-SUPPLIED VALUES:
+configuration:
+  endTime: "05:00"
+  rebootSentinel: /sentinel/reboot-required
+  startTime: "02:00"
+  timeZone: America/New_York

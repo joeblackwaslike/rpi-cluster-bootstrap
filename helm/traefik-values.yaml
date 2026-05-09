@@ -1,0 +1,9 @@
+USER-SUPPLIED VALUES:
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+logs:
+  general:
+    level: ERROR
+service:
+  type: LoadBalancer

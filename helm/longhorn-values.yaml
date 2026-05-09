@@ -1,0 +1,11 @@
+USER-SUPPLIED VALUES:
+csi:
+  kubeletRootDir: /var/lib/rancher/k3s/kubelet
+defaultSettings:
+  defaultDataPath: /var/lib/longhorn
+  kubernetesClusterAutoscalerEnabled: "false"
+  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+  replicaCount: 2
+  storageMinimalAvailablePercentage: 10
+ingress:
+  enabled: false

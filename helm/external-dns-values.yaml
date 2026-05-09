@@ -1,0 +1,13 @@
+USER-SUPPLIED VALUES:
+domainFilters:
+- joeblack.nyc
+policy: sync
+porkbun:
+  apiKeySecretRef:
+    key: api-key
+    name: porkbun-credentials
+  domain: joeblack.nyc
+  secretKeySecretRef:
+    key: secret-key
+    name: porkbun-credentials
+txtOwnerId: k8s-joeblack

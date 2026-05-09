@@ -1,0 +1,25 @@
+USER-SUPPLIED VALUES:
+config:
+  existingSecret: oauth2-proxy-secrets
+extraArgs:
+  cookie-domain: .k8s.joeblack.nyc
+  email-domain: '*'
+  github-user: joeblackwaslike
+  http-address: 0.0.0.0:4180
+  provider: github
+  redirect-url: https://oauth.k8s.joeblack.nyc/oauth2/callback
+  upstream: static://200
+  whitelist-domain: .k8s.joeblack.nyc
+ingress:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  className: traefik
+  enabled: true
+  hosts:
+  - oauth.k8s.joeblack.nyc
+  tls:
+  - hosts:
+    - oauth.k8s.joeblack.nyc
+    secretName: oauth2-proxy-tls
+service:
+  type: ClusterIP
