@@ -37,6 +37,13 @@ disable: [servicelb, traefik]
 data-dir: /var/lib/rancher/k3s
 kubelet-arg:
 - root-dir=/var/lib/rancher/k3s/kubelet
+etcd-arg:
+- auto-compaction-mode=periodic
+- auto-compaction-retention=1h
+- quota-backend-bytes=4294967296
+etcd-expose-metrics: true
+kube-apiserver-arg:
+- event-ttl=1h
 ```
 
 **Agent** (`/etc/rancher/k3s/config.yaml` on pi-2, pi-3):
@@ -155,6 +162,32 @@ Longhorn's Helm chart doesn't respect `csi.kubeletRootDir` fully — volume host
 - `kubernetes` — mcp-server-kubernetes, KUBECONFIG=/Users/joe/.kube/config  
 - `cloudflare` — @cloudflare/mcp-server-cloudflare via op run  
 - `porkbun` — mcp-server-porkbun via op run
+
+## etcd Capacity
+
+When the embedded etcd database reaches its quota, k3s on pi-1 shuts down with
+`etcdserver: mvcc: database space exceeded` and systemd restarts it forever, so the API is down.
+It happened on 2026-09-29 (38k events, 1.6 GB) and was found again on 2026-11-17 (2.16 GB, 4,240 restarts).
+Compaction frees pages inside the file but never shrinks it, so a weekly defrag is what keeps it small.
+
+**Prevention** (all on pi-1, installed by cloud-init):
+- `quota-backend-bytes=4294967296` raises the quota from the 2 GiB default.
+- `etcd-defrag.timer` runs `/usr/local/bin/etcd-defrag` Sundays at 04:00. It needs `/usr/local/bin/etcdctl`, which cloud-init installs pinned and checksummed.
+- `EtcdDbNearQuota` (over 70% of quota) and `EtcdUnstable` (etcd unreachable over 20% of 15 minutes) in `k8s/monitoring/etcd-rules.yaml`.
+- Alertmanager sends `warning` and `critical` alerts to ntfy.sh. Set `NTFY_TOPIC` in `.env` (`openssl rand -hex 8`), run `make ntfy-secret`, and subscribe to that topic in the ntfy app. Alert labels and text go to a public service, so keep secrets out of annotations.
+- `etcd-expose-metrics: true` serves unauthenticated HTTP metrics on pi-1 port 2381, reachable from the LAN. They hold no secret values. Restricting the port to the Pis and the pod CIDR is an open follow-up.
+
+**Apply to a running pi-1** (cloud-init only runs on first boot):
+1. Merge the new keys into `/etc/rancher/k3s/config.yaml`, then `sudo systemctl restart k3s`. The API is down for 2-3 minutes; pods keep running.
+2. Copy `/usr/local/bin/etcd-defrag` and the two `etcd-defrag.*` units from `cloud-init/nodes/pi-1/user-data`, install `etcdctl` the same way, `sudo systemctl daemon-reload`, `sudo systemctl enable --now etcd-defrag.timer`.
+3. `make ntfy-secret`, then `tail -n +2 helm/kube-prometheus-stack-values.yaml | helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --version 84.5.0 --reuse-values -f -`, then `kubectl apply -f k8s/monitoring/etcd-rules.yaml`.
+4. If the upgrade fails on `Endpoints "kube-prometheus-stack-kube-etcd"`, delete that Service and Endpoints in `kube-system` and rerun it. Helm recreates them selector-less.
+
+**Recover from "database space exceeded"** (`journalctl -u k3s | grep 'space exceeded'` on pi-1):
+1. `sudo systemctl stop k3s`, then `sudo cp -a /var/lib/rancher/k3s/server/db/etcd/member/snap/db /var/lib/rancher/etcd-backup.db` (needs the disk space).
+2. Add `quota-backend-bytes=4294967296` to `etcd-arg` in the k3s config if it isn't there, then `sudo systemctl start k3s` (it takes up to 3 minutes).
+3. With the etcd client flags from `/usr/local/bin/etcd-defrag` (the quota raise in step 2 keeps k3s up while you do this): get the revision from `etcdctl endpoint status -w fields | awk -F': ' '/"Revision"/{print $2}'`, run `etcdctl compact <revision>`, `etcdctl defrag` (use `--command-timeout=600s`, the default 5 s fails and k3s restarts), then `etcdctl alarm disarm`.
+4. Confirm `etcdctl endpoint status -w table` shows a small DB size, take a snapshot with `sudo k3s etcd-snapshot save`, and delete the backup copy.
 
 ## Common Operations
 

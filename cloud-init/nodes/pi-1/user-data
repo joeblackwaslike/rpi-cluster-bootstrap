@@ -50,6 +50,51 @@ write_files:
     - node.kubernetes.io/instance-type=pi-5
     kubelet-arg:
     - "root-dir=/var/lib/rancher/k3s/kubelet"
+    etcd-arg:
+    - auto-compaction-mode=periodic
+    - auto-compaction-retention=1h
+    - quota-backend-bytes=4294967296
+    etcd-expose-metrics: true
+    kube-apiserver-arg:
+    - event-ttl=1h
+
+# Compaction frees pages but never shrinks the db file; a full file hits the quota and crash-loops k3s
+- path: /usr/local/bin/etcd-defrag
+  permissions: "0755"
+  content: |
+    #!/bin/sh
+    set -eu
+    T=/var/lib/rancher/k3s/server/tls/etcd
+    exec /usr/local/bin/etcdctl --command-timeout=600s --endpoints=https://127.0.0.1:2379 \
+      --cacert="$T/server-ca.crt" --cert="$T/server-client.crt" --key="$T/server-client.key" defrag
+
+- path: /etc/systemd/system/etcd-defrag.service
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Defragment the k3s embedded etcd
+    After=k3s.service
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/local/bin/etcd-defrag
+    NoNewPrivileges=yes
+    PrivateTmp=yes
+    ProtectHome=yes
+    ProtectSystem=strict
+
+- path: /etc/systemd/system/etcd-defrag.timer
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Weekly etcd defrag
+
+    [Timer]
+    OnCalendar=Sun *-*-* 04:00:00
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
 
 # NVMe p2 (ext4, 63.5G) used for k3s data; p3 (LVM) left for Longhorn
 - path: /etc/systemd/system/var-lib-rancher.mount
@@ -100,3 +145,13 @@ runcmd:
 - curl -fsSL https://tailscale.com/install.sh | sh
 - tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-1
 - curl -sfL https://get.k3s.io | sh -
+- |
+  (
+    set -eu
+    d=$(mktemp -d)
+    curl -fsSL -o "$d/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-arm64.tar.gz
+    echo "ef5fc443cf7cc5b82738f3c28363704896551900af90a6d622cae740b5644270  $d/etcd.tgz" | sha256sum -c -
+    tar -xzf "$d/etcd.tgz" -C /usr/local/bin --strip-components=1 etcd-v3.6.7-linux-arm64/etcdctl
+    rm -rf "$d"
+  )
+- systemctl enable --now etcd-defrag.timer

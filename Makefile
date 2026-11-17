@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env
+.PHONY: all download pxe-image flash clean check-env ntfy-secret
 
 all: pxe-image
 
@@ -16,6 +16,13 @@ check-env:
 	@test -f .env || (echo "ERROR: .env not found — copy .env.example and fill in secrets" && exit 1)
 	@test -n "$(TAILSCALE_AUTH_KEY)" || (echo "ERROR: TAILSCALE_AUTH_KEY not set in .env" && exit 1)
 	@test -n "$(K3S_TOKEN)"          || (echo "ERROR: K3S_TOKEN not set in .env" && exit 1)
+
+# The ntfy.sh topic name is the only access control, so it lives in .env and a Secret, never in the repo
+ntfy-secret:
+	@printf '%s' "$$NTFY_TOPIC" | grep -Eq '^[A-Za-z0-9_-]+$$' || (echo "ERROR: NTFY_TOPIC must be set in .env using only letters, digits, - or _ (openssl rand -hex 8)" && exit 1)
+	@kubectl -n monitoring create secret generic ntfy-webhook \
+		--from-literal=url="https://ntfy.sh/$$NTFY_TOPIC?template=alertmanager" \
+		--dry-run=client -o yaml | kubectl apply -f -
 
 download: $(PIOSS_IMG)
 
