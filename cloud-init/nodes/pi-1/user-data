@@ -55,7 +55,6 @@ write_files:
     - auto-compaction-retention=1h
     - quota-backend-bytes=4294967296
     etcd-expose-metrics: true
-    etcd-snapshot-retention: 5
     kube-apiserver-arg:
     - event-ttl=1h
 
@@ -66,8 +65,8 @@ write_files:
     #!/bin/sh
     set -eu
     T=/var/lib/rancher/k3s/server/tls/etcd
-    exec etcdctl --command-timeout=600s --endpoints=https://127.0.0.1:2379 \
-      --cacert=$T/server-ca.crt --cert=$T/server-client.crt --key=$T/server-client.key defrag
+    exec /usr/local/bin/etcdctl --command-timeout=600s --endpoints=https://127.0.0.1:2379 \
+      --cacert="$T/server-ca.crt" --cert="$T/server-client.crt" --key="$T/server-client.key" defrag
 
 - path: /etc/systemd/system/etcd-defrag.service
   permissions: "0644"
@@ -75,11 +74,14 @@ write_files:
     [Unit]
     Description=Defragment the k3s embedded etcd
     After=k3s.service
-    ConditionPathExists=/usr/local/bin/etcdctl
 
     [Service]
     Type=oneshot
     ExecStart=/usr/local/bin/etcd-defrag
+    NoNewPrivileges=yes
+    PrivateTmp=yes
+    ProtectHome=yes
+    ProtectSystem=strict
 
 - path: /etc/systemd/system/etcd-defrag.timer
   permissions: "0644"
@@ -143,4 +145,9 @@ runcmd:
 - curl -fsSL https://tailscale.com/install.sh | sh
 - tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-1
 - curl -sfL https://get.k3s.io | sh -
+- |
+  curl -fsSL -o /tmp/etcd.tgz https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-arm64.tar.gz
+  echo "ef5fc443cf7cc5b82738f3c28363704896551900af90a6d622cae740b5644270  /tmp/etcd.tgz" | sha256sum -c -
+  tar -xzf /tmp/etcd.tgz -C /usr/local/bin --strip-components=1 etcd-v3.6.7-linux-arm64/etcdctl
+  rm /tmp/etcd.tgz
 - systemctl enable --now etcd-defrag.timer

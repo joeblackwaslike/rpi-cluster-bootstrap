@@ -2,12 +2,12 @@ USER-SUPPLIED VALUES:
 alertmanager:
   config:
     route:
-      receiver: ntfy
+      receiver: "null"
       group_by: [alertname, namespace]
       routes:
-      - receiver: "null"
+      - receiver: ntfy
         matchers:
-        - alertname =~ "Watchdog|InfoInhibitor"
+        - severity =~ "warning|critical"
     receivers:
     - name: "null"
     - name: ntfy

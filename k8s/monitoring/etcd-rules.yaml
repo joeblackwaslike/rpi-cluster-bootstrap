@@ -16,10 +16,12 @@ spec:
         severity: warning
       annotations:
         summary: etcd database is over 70% of its quota
-        description: At quota, k3s crash-loops. Compact and run /usr/local/bin/etcd-defrag on pi-1.
-    - alert: EtcdRestartLoop
-      expr: changes(process_start_time_seconds{job="kube-etcd"}[1h]) > 3
+        description: At quota, k3s crash-loops. See the etcd section of docs/operations.md.
+    - alert: EtcdUnstable
+      expr: avg_over_time(up{job="kube-etcd"}[15m]) < 0.8
+      for: 5m
       labels:
         severity: critical
       annotations:
-        summary: etcd restarted more than 3 times in the last hour
+        summary: etcd was unreachable for more than 20% of the last 15 minutes
+        description: Embedded etcd goes away whenever k3s restarts. See the etcd section of docs/operations.md.
