@@ -18,7 +18,7 @@ spec:
         summary: etcd database is over 70% of its quota
         description: At quota, k3s crash-loops. See the etcd section of docs/operations.md.
     - alert: EtcdUnstable
-      expr: avg_over_time(up{job="kube-etcd"}[15m]) < 0.8
+      expr: avg_over_time(up{job="kube-etcd"}[15m]) < 0.8 or absent(up{job="kube-etcd"})
       for: 5m
       labels:
         severity: critical

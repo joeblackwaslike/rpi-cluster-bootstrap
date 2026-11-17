@@ -186,7 +186,7 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 **Recover from "database space exceeded"** (`journalctl -u k3s | grep 'space exceeded'` on pi-1):
 1. `sudo systemctl stop k3s`, then `sudo cp -a /var/lib/rancher/k3s/server/db/etcd/member/snap/db /var/lib/rancher/etcd-backup.db` (needs the disk space).
 2. Add `quota-backend-bytes=4294967296` to `etcd-arg` in the k3s config if it isn't there, then `sudo systemctl start k3s` (it takes up to 3 minutes).
-3. With the etcd client flags from `/usr/local/bin/etcd-defrag`: `etcdctl compact <current revision>`, `etcdctl defrag` (use `--command-timeout=600s`, the default 5 s fails and k3s restarts), then `etcdctl alarm disarm`.
+3. With the etcd client flags from `/usr/local/bin/etcd-defrag` (the quota raise in step 2 keeps k3s up while you do this): get the revision from `etcdctl endpoint status -w fields | awk -F': ' '/"Revision"/{print $2}'`, run `etcdctl compact <revision>`, `etcdctl defrag` (use `--command-timeout=600s`, the default 5 s fails and k3s restarts), then `etcdctl alarm disarm`.
 4. Confirm `etcdctl endpoint status -w table` shows a small DB size, take a snapshot with `sudo k3s etcd-snapshot save`, and delete the backup copy.
 
 ## Common Operations
