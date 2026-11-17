@@ -194,11 +194,11 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 
 1. In PagerDuty, create a service named `pi-cluster` with an **Events API v2** integration and copy its 32 character integration key.
 2. In the PagerDuty app, set your notification rules for high-urgency incidents (My Profile, Notification Rules).
-3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY` and run `make pagerduty-secret`. Do this before the helm upgrade: Alertmanager mounts the Secret, and without it the pod stays in ContainerCreating and no alert goes anywhere.
-4. Apply: `tail -n +2 helm/kube-prometheus-stack-values.yaml | helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --version 84.5.0 --reuse-values -f -`.
-5. Test: `kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager -- amtool alert add PagerTest severity=critical namespace=monitoring --annotation=summary="paging test" --alertmanager.url=http://localhost:9093`, then resolve the incident in PagerDuty.
+3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY` and run `make pagerduty-secret`. Do this before the helm upgrade: Alertmanager mounts the Secret, and without it the pod stays in ContainerCreating and no alert goes anywhere. Confirm it exists with `kubectl -n monitoring get secret pagerduty-routing-key -o name`.
+4. Apply: `tail -n +2 helm/kube-prometheus-stack-values.yaml | helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --version 84.5.0 --reuse-values -f -`, then wait for it with `kubectl -n monitoring rollout status statefulset/alertmanager-kube-prometheus-stack-alertmanager`.
+5. Test: `kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager -- amtool alert add PagerTest severity=critical namespace=monitoring --annotation=summary="paging test" --alertmanager.url=http://localhost:9093`. Expect the page after about 30 seconds (Alertmanager's group wait), then resolve the incident in PagerDuty.
 
-Alertmanager's `externalUrl` and Prometheus's `externalUrl` are set to the public hostnames so the links in a page open from a phone. PagerDuty only hears about problems Alertmanager can see: if the whole cluster is down, nothing pages.
+Alertmanager's `externalUrl` and Prometheus's `externalUrl` are set to the live `*.joeblack.nyc` hostnames so the links in a page open from a phone. They differ from the `*.k8s` hosts in the Public URLs table; update both when issue #5 is reconciled. Labels and annotations are sent to PagerDuty too, so keep secrets out of them. PagerDuty only hears about problems Alertmanager can see: if the whole cluster is down, nothing pages.
 
 ## Common Operations
 
