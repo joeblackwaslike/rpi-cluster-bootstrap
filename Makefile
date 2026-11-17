@@ -19,7 +19,7 @@ check-env:
 
 # The ntfy.sh topic name is the only access control, so it lives in .env and a Secret, never in the repo
 ntfy-secret:
-	@test -n "$(NTFY_TOPIC)" || (echo "ERROR: NTFY_TOPIC not set in .env (openssl rand -hex 8)" && exit 1)
+	@printf '%s' "$(NTFY_TOPIC)" | grep -Eq '^[A-Za-z0-9_-]+$$' || (echo "ERROR: NTFY_TOPIC must be set in .env using only letters, digits, - or _ (openssl rand -hex 8)" && exit 1)
 	@kubectl -n monitoring create secret generic ntfy-webhook \
 		--from-literal=url="https://ntfy.sh/$(NTFY_TOPIC)?template=alertmanager" \
 		--dry-run=client -o yaml | kubectl apply -f -
