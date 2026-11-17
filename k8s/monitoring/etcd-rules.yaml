@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: etcd-capacity
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: etcd-capacity
+    rules:
+    - alert: EtcdDbNearQuota
+      expr: etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes > 0.7
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: etcd database is over 70% of its quota
+        description: At quota, k3s crash-loops. Compact and run /usr/local/bin/etcd-defrag on pi-1.
+    - alert: EtcdRestartLoop
+      expr: changes(process_start_time_seconds{job="kube-etcd"}[1h]) > 3
+      labels:
+        severity: critical
+      annotations:
+        summary: etcd restarted more than 3 times in the last hour

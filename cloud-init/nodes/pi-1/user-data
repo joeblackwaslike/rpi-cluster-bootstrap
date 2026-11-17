@@ -50,6 +50,49 @@ write_files:
     - node.kubernetes.io/instance-type=pi-5
     kubelet-arg:
     - "root-dir=/var/lib/rancher/k3s/kubelet"
+    etcd-arg:
+    - auto-compaction-mode=periodic
+    - auto-compaction-retention=1h
+    - quota-backend-bytes=4294967296
+    etcd-expose-metrics: true
+    etcd-snapshot-retention: 5
+    kube-apiserver-arg:
+    - event-ttl=1h
+
+# Compaction frees pages but never shrinks the db file; a full file hits the quota and crash-loops k3s
+- path: /usr/local/bin/etcd-defrag
+  permissions: "0755"
+  content: |
+    #!/bin/sh
+    set -eu
+    T=/var/lib/rancher/k3s/server/tls/etcd
+    exec etcdctl --command-timeout=600s --endpoints=https://127.0.0.1:2379 \
+      --cacert=$T/server-ca.crt --cert=$T/server-client.crt --key=$T/server-client.key defrag
+
+- path: /etc/systemd/system/etcd-defrag.service
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Defragment the k3s embedded etcd
+    After=k3s.service
+    ConditionPathExists=/usr/local/bin/etcdctl
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/local/bin/etcd-defrag
+
+- path: /etc/systemd/system/etcd-defrag.timer
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Weekly etcd defrag
+
+    [Timer]
+    OnCalendar=Sun *-*-* 04:00:00
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
 
 # NVMe p2 (ext4, 63.5G) used for k3s data; p3 (LVM) left for Longhorn
 - path: /etc/systemd/system/var-lib-rancher.mount
@@ -100,3 +143,4 @@ runcmd:
 - curl -fsSL https://tailscale.com/install.sh | sh
 - tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-1
 - curl -sfL https://get.k3s.io | sh -
+- systemctl enable --now etcd-defrag.timer

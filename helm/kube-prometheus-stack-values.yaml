@@ -8,6 +8,14 @@ alertmanager:
             requests:
               storage: 2Gi
           storageClassName: longhorn
+kubeEtcd:
+  enabled: true
+  endpoints:
+  - 192.168.1.149
+  service:
+    enabled: true
+    port: 2381
+    targetPort: 2381
 grafana:
   adminPassword: changeme
   ingress:
