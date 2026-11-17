@@ -146,10 +146,12 @@ runcmd:
 - tailscale up --authkey=__TAILSCALE_AUTH_KEY__ --hostname=pi-1
 - curl -sfL https://get.k3s.io | sh -
 - |
-  set -eu
-  d=$(mktemp -d)
-  curl -fsSL -o "$d/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-arm64.tar.gz
-  echo "ef5fc443cf7cc5b82738f3c28363704896551900af90a6d622cae740b5644270  $d/etcd.tgz" | sha256sum -c -
-  tar -xzf "$d/etcd.tgz" -C /usr/local/bin --strip-components=1 etcd-v3.6.7-linux-arm64/etcdctl
-  rm -rf "$d"
+  (
+    set -eu
+    d=$(mktemp -d)
+    curl -fsSL -o "$d/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-arm64.tar.gz
+    echo "ef5fc443cf7cc5b82738f3c28363704896551900af90a6d622cae740b5644270  $d/etcd.tgz" | sha256sum -c -
+    tar -xzf "$d/etcd.tgz" -C /usr/local/bin --strip-components=1 etcd-v3.6.7-linux-arm64/etcdctl
+    rm -rf "$d"
+  )
 - systemctl enable --now etcd-defrag.timer

@@ -23,5 +23,5 @@ spec:
       labels:
         severity: critical
       annotations:
-        summary: etcd was unreachable for more than 20% of the last 15 minutes
+        summary: etcd was unreachable for more than 20% of the last 15 minutes, or is not being scraped at all
         description: Embedded etcd goes away whenever k3s restarts. See the etcd section of docs/operations.md.
