@@ -68,9 +68,8 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | External-DNS | external-dns | edns-porkbun/external-dns-porkbun-webhook | |
 | Cloudflare Tunnel | cloudflared | raw manifests | 2024.8.3, HTTP2 protocol |
 | Longhorn | longhorn-system | longhorn/longhorn | CSI kubeletRootDir patched |
-| NFS Provisioner | nfs-provisioner | nfs-subdir | server=192.168.1.75, path=/mnt/k8s-storage |
 | kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
-| Loki | monitoring | grafana/loki-stack | |
+| Loki | monitoring | grafana/loki-stack | 20Gi volume, 7 day compactor retention (the 10Gi disk filled with no retention). To resize: patch the PVC, `kubectl -n monitoring delete sts loki --cascade=orphan`, then helm upgrade |
 | Reloader | reloader | stakater/reloader | |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
 | Tailscale Operator | tailscale | tailscale/tailscale-operator | |
