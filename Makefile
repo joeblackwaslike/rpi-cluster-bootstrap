@@ -21,7 +21,7 @@ check-env:
 ntfy-secret:
 	@printf '%s' "$$NTFY_TOPIC" | grep -Eq '^[A-Za-z0-9_-]+$$' || (echo "ERROR: NTFY_TOPIC must be set in .env using only letters, digits, - or _ (openssl rand -hex 8)" && exit 1)
 	@kubectl -n monitoring create secret generic ntfy-webhook \
-		--from-literal=url="https://ntfy.sh/$(NTFY_TOPIC)?template=alertmanager" \
+		--from-literal=url="https://ntfy.sh/$$NTFY_TOPIC?template=alertmanager" \
 		--dry-run=client -o yaml | kubectl apply -f -
 
 download: $(PIOSS_IMG)
