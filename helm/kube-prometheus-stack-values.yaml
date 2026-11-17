@@ -5,6 +5,10 @@ alertmanager:
       receiver: "null"
       group_by: [alertname, namespace]
       routes:
+      - receiver: pagerduty
+        matchers:
+        - severity = "critical"
+        continue: true
       - receiver: ntfy
         matchers:
         - severity =~ "warning|critical"
@@ -14,9 +18,15 @@ alertmanager:
       webhook_configs:
       - url_file: /etc/alertmanager/secrets/ntfy-webhook/url
         send_resolved: true
+    - name: pagerduty
+      pagerduty_configs:
+      - routing_key_file: /etc/alertmanager/secrets/pagerduty-routing-key/key
+        send_resolved: true
   alertmanagerSpec:
+    externalUrl: https://alertmanager.joeblack.nyc
     secrets:
     - ntfy-webhook
+    - pagerduty-routing-key
     storage:
       volumeClaimTemplate:
         spec:
@@ -48,6 +58,7 @@ grafana:
     storageClassName: longhorn
 prometheus:
   prometheusSpec:
+    externalUrl: https://prometheus.joeblack.nyc
     retention: 7d
     storageSpec:
       volumeClaimTemplate:

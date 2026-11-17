@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env ntfy-secret
+.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret
 
 all: pxe-image
 
@@ -22,6 +22,13 @@ ntfy-secret:
 	@printf '%s' "$$NTFY_TOPIC" | grep -Eq '^[A-Za-z0-9_-]+$$' || (echo "ERROR: NTFY_TOPIC must be set in .env using only letters, digits, - or _ (openssl rand -hex 8)" && exit 1)
 	@kubectl -n monitoring create secret generic ntfy-webhook \
 		--from-literal=url="https://ntfy.sh/$$NTFY_TOPIC?template=alertmanager" \
+		--dry-run=client -o yaml | kubectl apply -f -
+
+# A PagerDuty Events API v2 integration key: 32 letters and digits
+pagerduty-secret:
+	@printf '%s' "$$PAGERDUTY_ROUTING_KEY" | grep -Eq '^[A-Za-z0-9]{32}$$' || (echo "ERROR: PAGERDUTY_ROUTING_KEY must be set in .env to the 32 character Events API v2 integration key" && exit 1)
+	@kubectl -n monitoring create secret generic pagerduty-routing-key \
+		--from-literal=key="$$PAGERDUTY_ROUTING_KEY" \
 		--dry-run=client -o yaml | kubectl apply -f -
 
 download: $(PIOSS_IMG)
