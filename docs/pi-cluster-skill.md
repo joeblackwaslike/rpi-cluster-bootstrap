@@ -161,6 +161,8 @@ Longhorn's Helm chart doesn't respect `csi.kubeletRootDir` fully — volume host
 
 The Tailscale operator's `operator-oauth` Secret (namespace `tailscale`) is managed outside Helm. It carries `helm.sh/resource-policy: keep`, and `helm/tailscale-operator-values.yaml` sets `oauth: {}`. To replace the client, run `kubectl -n tailscale create secret generic operator-oauth --from-literal=client_id=... --from-literal=client_secret=... --dry-run=client -o yaml | kubectl apply -f -` with the values from "Tailscale trust oauth creds", then `kubectl -n tailscale rollout restart deploy/operator`.
 
+Create `grafana-admin` with `make grafana-secret` before the first `helm install` of kube-prometheus-stack, and create `operator-oauth` before installing the Tailscale operator. Without them, Grafana sits in `CreateContainerConfigError` and the operator can't mount its credentials. To rotate the Grafana password, change `GRAFANA_ADMIN_PASSWORD` in `.env` and 1Password, then run `make grafana-secret` again. Grafana only reads the env value when its DB is first created, so the target also resets the password in the running pod.
+
 ## MCP Servers (Claude Code `~/.claude/settings.json`)
 
 - `kubernetes` — mcp-server-kubernetes, KUBECONFIG=/Users/joe/.kube/config  

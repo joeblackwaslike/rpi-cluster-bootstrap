@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret
+.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret grafana-secret
 
 all: pxe-image
 
@@ -38,6 +38,18 @@ newrelic-secret:
 	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-license \
 		--from-file=licenseKey=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
+
+# Grafana reads the admin env only when its DB is first created, so a running Grafana also gets a reset
+grafana-secret:
+	@test $${#GRAFANA_ADMIN_PASSWORD} -ge 16 || (echo "ERROR: GRAFANA_ADMIN_PASSWORD must be set in .env to at least 16 characters (openssl rand -base64 30)" && exit 1)
+	@kubectl -n monitoring create secret generic grafana-admin \
+		--from-literal=admin-user=admin \
+		--from-literal=admin-password="$$GRAFANA_ADMIN_PASSWORD" \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@if kubectl -n monitoring get deploy kube-prometheus-stack-grafana >/dev/null 2>&1; then \
+		kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
+			grafana cli admin reset-admin-password "$$GRAFANA_ADMIN_PASSWORD" >/dev/null && echo "Grafana admin password reset"; \
+	fi
 
 download: $(PIOSS_IMG)
 
