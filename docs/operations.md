@@ -32,7 +32,7 @@ nvme0n1p3  ~400G  /               (OS root, rsync from NFS)
 ```yaml
 cluster-init: true
 tls-san: [192.168.1.149, pi-1]
-token: 83458d7f7efa21579c5d97fe3c10079f55e6a16320a37042b740408f70c79e9d
+token: <1Password: Personal / "k3s cluster token - joeblack-homelab">
 disable: [servicelb, traefik]
 data-dir: /var/lib/rancher/k3s
 node-taint:
@@ -57,7 +57,7 @@ kubectl taint node pi-1 node-role.kubernetes.io/control-plane=:PreferNoSchedule 
 **Agent** (`/etc/rancher/k3s/config.yaml` on pi-2, pi-3):
 ```yaml
 server: https://192.168.1.149:6443
-token: 83458d7f7efa21579c5d97fe3c10079f55e6a16320a37042b740408f70c79e9d
+token: <1Password: Personal / "k3s cluster token - joeblack-homelab">
 data-dir: /var/lib/rancher/k3s
 kubelet-arg:
 - root-dir=/var/lib/rancher/k3s/kubelet
@@ -187,6 +187,7 @@ Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the d
 | Cloudflare Tunnel - joeblack-homelab | tunnel_id, token, account_id |
 | oauth2-proxy - joeblack-homelab | cookie_secret, github_client_id/secret |
 | Tailscale trust oauth creds | k8s operator client id/secret |
+| k3s cluster token - joeblack-homelab | `token:` in `/etc/rancher/k3s/config.yaml` on all nodes, and `K3S_TOKEN` in `.env` |
 
 ## MCP Servers (Claude Code `~/.claude/settings.json`)
 
