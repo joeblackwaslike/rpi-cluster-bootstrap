@@ -43,13 +43,15 @@ newrelic-secret:
 grafana-secret:
 	@test $${#GRAFANA_ADMIN_PASSWORD} -ge 16 || (echo "ERROR: GRAFANA_ADMIN_PASSWORD must be set in .env to at least 16 characters (openssl rand -base64 30)" && exit 1)
 	@kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-	@kubectl -n monitoring create secret generic grafana-admin \
+	@printf '%s' "$$GRAFANA_ADMIN_PASSWORD" | kubectl -n monitoring create secret generic grafana-admin \
 		--from-literal=admin-user=admin \
-		--from-literal=admin-password="$$GRAFANA_ADMIN_PASSWORD" \
+		--from-file=admin-password=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
 	@if kubectl -n monitoring get deploy kube-prometheus-stack-grafana >/dev/null 2>&1; then \
-		kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
-			grafana cli admin reset-admin-password "$$GRAFANA_ADMIN_PASSWORD" >/dev/null && echo "Grafana admin password reset"; \
+		printf '%s' "$$GRAFANA_ADMIN_PASSWORD" | kubectl -n monitoring exec -i deploy/kube-prometheus-stack-grafana -c grafana -- \
+			grafana cli admin reset-admin-password --password-from-stdin >/dev/null \
+			&& echo "Grafana admin password reset" \
+			|| { echo "ERROR: grafana-admin Secret is updated but the Grafana password reset failed; rerun make grafana-secret once the pod is Ready"; exit 1; }; \
 	else \
 		echo "Grafana deployment not found, skipped the password reset (fine before the first install)"; \
 	fi
