@@ -35,8 +35,8 @@ pagerduty-secret:
 newrelic-secret:
 	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | LC_ALL=C grep -Eq '^[A-Za-z0-9]{36}NRAL$$' || (echo "ERROR: NEW_RELIC_LICENSE_KEY must be set in .env to the 40 character license key ending in NRAL" && exit 1)
 	@kubectl create namespace newrelic --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl -n newrelic create secret generic newrelic-license \
-		--from-literal=licenseKey="$$NEW_RELIC_LICENSE_KEY" \
+	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-license \
+		--from-file=licenseKey=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
 
 download: $(PIOSS_IMG)
