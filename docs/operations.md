@@ -160,7 +160,7 @@ This keeps replica memory off the control-plane node. A pi-2 or pi-3 reboot leav
 
 ## Prometheus Memory
 
-`helm/kube-prometheus-stack-values.yaml` drops the apiserver request/response histograms (about 100k of 211k series on 2026-11-19) and disables the `kubeApiserverAvailability`, `kubeApiserverBurnrate`, `kubeApiserverHistogram` and `kubeApiserverSlos` rule groups that read them. As a result, the "Kubernetes / API server" Grafana dashboard shows empty latency panels and the `KubeAPIErrorBudgetBurn` alert no longer exists. `KubeAPIDown` and `KubeClientCertificateExpiration` still fire.
+`helm/kube-prometheus-stack-values.yaml` drops the apiserver request/response histograms (about 100k of 211k series on 2026-11-19) and disables the `kubeApiserverAvailability`, `kubeApiserverBurnrate`, `kubeApiserverHistogram` and `kubeApiserverSlos` rule groups that read them. As a result, the "Kubernetes / API server" Grafana dashboard shows empty latency, availability and error-budget panels and the `KubeAPIErrorBudgetBurn` alert no longer exists. `KubeAPIDown` and `KubeClientCertificateExpiration` still fire.
 
 Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the drop and 827 MiB right after the restart with 7d retention. If it gets OOMKilled, raise the limit or shorten retention before re-adding the histograms.
 
