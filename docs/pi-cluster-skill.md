@@ -201,6 +201,21 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 
 Alertmanager's `externalUrl` and Prometheus's `externalUrl` are set to the live `*.joeblack.nyc` hostnames so the links in a page open from a phone. They differ from the `*.k8s` hosts in the Public URLs table; update both when issue #5 is reconciled. Labels and annotations are sent to PagerDuty too, so keep secrets out of them. PagerDuty only hears about problems Alertmanager can see: if the whole cluster is down, nothing pages.
 
+## New Relic
+
+New Relic runs from a `HelmChart` resource that k3s's built-in helm-controller reconciles, so there is no `helm` command to run. The chart and its values live in `k8s/monitoring/newrelic.yaml`. The license key stays out of the repo: it sits in `.env` as `NEW_RELIC_LICENSE_KEY` and in the `newrelic-license` Secret.
+
+1. Put the key in `.env`, then run `make newrelic-secret`. It also creates the `newrelic` namespace if it's missing.
+2. Apply: `kubectl apply -f k8s/monitoring/newrelic.yaml`.
+3. Wait for the install job: `kubectl -n kube-system get job helm-install-newrelic-bundle`, then `kubectl -n newrelic get pods`.
+4. Check memory with `kubectl top nodes`. The nodes were at 69 to 84% before this install.
+
+To upgrade, change `version` or the values in the manifest and re-apply; the controller runs `helm upgrade`. To remove it, `kubectl delete -f k8s/monitoring/newrelic.yaml`. That leaves the `newrelic` namespace and the `newrelic-license` Secret in place; delete the namespace too if you want them gone (then re-run `make newrelic-secret` before a reinstall). Helm leaves any CRDs the chart installed behind.
+
+`kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
+
+Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
+
 ## Common Operations
 
 **Refresh kubeconfig** (after k3s cert regeneration):

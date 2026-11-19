@@ -6,3 +6,4 @@ img/
 *.zip
 .vagrant/
 .DS_Store
+.clawhip/

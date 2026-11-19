@@ -210,11 +210,11 @@ New Relic runs from a `HelmChart` resource that k3s's built-in helm-controller r
 3. Wait for the install job: `kubectl -n kube-system get job helm-install-newrelic-bundle`, then `kubectl -n newrelic get pods`.
 4. Check memory with `kubectl top nodes`. The nodes were at 69 to 84% before this install.
 
-To upgrade, change `version` or the values in the manifest and re-apply; the controller runs `helm upgrade`. To remove it, `kubectl delete -f k8s/monitoring/newrelic.yaml`.
+To upgrade, change `version` or the values in the manifest and re-apply; the controller runs `helm upgrade`. To remove it, `kubectl delete -f k8s/monitoring/newrelic.yaml`. That leaves the `newrelic` namespace and the `newrelic-license` Secret in place; delete the namespace too if you want them gone (then re-run `make newrelic-secret` before a reinstall). Helm leaves any CRDs the chart installed behind.
 
-`global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
+`kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
 
-Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Loki already collects logs. Re-test it after a chart bump before turning it on.
+Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
 
 ## Common Operations
 
