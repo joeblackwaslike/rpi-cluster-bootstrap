@@ -48,6 +48,12 @@ kube-apiserver-arg:
 - event-ttl=1h
 ```
 
+k3s applies `node-taint` only when the node first registers. On a running pi-1, editing the config doesn't add the taint, so set it directly:
+
+```bash
+kubectl taint node pi-1 node-role.kubernetes.io/control-plane=:PreferNoSchedule --overwrite
+```
+
 **Agent** (`/etc/rancher/k3s/config.yaml` on pi-2, pi-3):
 ```yaml
 server: https://192.168.1.149:6443
