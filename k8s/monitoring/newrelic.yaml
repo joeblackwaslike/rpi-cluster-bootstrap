@@ -34,5 +34,3 @@ spec:
       enabled: true
     logging:
       enabled: true
-    newrelic-logging:
-      lowDataMode: true

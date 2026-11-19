@@ -216,7 +216,7 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 `kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
 
-Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512`, because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets the limit on new nodes; on a running node put it in `/etc/sysctl.d/99-inotify.conf`. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
+Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512` (with `fs.inotify.max_user_watches = 524288`), because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets both in `/etc/sysctl.d/99-k3s.conf` on new nodes. The three running nodes were patched by hand in `/etc/sysctl.d/99-inotify.conf`; use the same file on any other running node. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
 
 ## Kernel page size (4 KB)
 
