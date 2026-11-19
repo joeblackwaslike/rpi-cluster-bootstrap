@@ -190,7 +190,18 @@ Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the d
 | k3s cluster token - joeblack-homelab | `token:` in `/etc/rancher/k3s/config.yaml` on all nodes, and `K3S_TOKEN` in `.env` |
 | Grafana admin - joeblack-homelab | `monitoring/grafana-admin` Secret (Helm `grafana.admin.existingSecret`), and `GRAFANA_ADMIN_PASSWORD` in `.env` |
 
-The Tailscale operator's `operator-oauth` Secret (namespace `tailscale`) is managed outside Helm. It carries `helm.sh/resource-policy: keep`, and `helm/tailscale-operator-values.yaml` sets `oauth: {}`. To replace the client, run `kubectl -n tailscale create secret generic operator-oauth --from-literal=client_id=... --from-literal=client_secret=... --dry-run=client -o yaml | kubectl apply -f -` with the values from "Tailscale trust oauth creds", then `kubectl -n tailscale rollout restart deploy/operator`.
+The Tailscale operator's `operator-oauth` Secret (namespace `tailscale`) is managed outside Helm. It carries `helm.sh/resource-policy: keep`, and `helm/tailscale-operator-values.yaml` sets `oauth: {}`. To replace the client, update "Tailscale trust oauth creds" in 1Password, then run this from bash or zsh, which keeps the secret out of argv and shell history:
+
+```bash
+id=$(op read --no-newline "op://Personal/Tailscale trust oauth creds/client id") &&
+secret=$(op read --no-newline "op://Personal/Tailscale trust oauth creds/client secret") &&
+kubectl -n tailscale create secret generic operator-oauth \
+  --from-file=client_id=<(printf %s "$id") \
+  --from-file=client_secret=<(printf %s "$secret") \
+  --dry-run=client -o yaml | kubectl apply -f - &&
+kubectl -n tailscale rollout restart deploy/operator
+```
+
 
 Create `grafana-admin` with `make grafana-secret` before the first `helm install` of kube-prometheus-stack (the target creates the `monitoring` namespace if needed). Create `operator-oauth` before installing the Tailscale operator, after `kubectl create namespace tailscale`. Without them, Grafana sits in `CreateContainerConfigError` and the operator can't mount its credentials. To rotate the Grafana password, change `GRAFANA_ADMIN_PASSWORD` in `.env` and 1Password, then run `make grafana-secret` again. Grafana only reads the env value when its DB is first created, so the target also resets the password in the running pod.
 
