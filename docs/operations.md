@@ -79,6 +79,7 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
 | Loki | monitoring | grafana/loki-stack | 20Gi volume, 7 day compactor retention (the 10Gi disk filled with no retention). To resize: patch the PVC, `kubectl -n monitoring delete sts loki --cascade=orphan`, then helm upgrade |
 | Reloader | reloader | stakater/reloader | |
+| New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF and log forwarding off |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
 | Tailscale Operator | tailscale | tailscale/tailscale-operator | |
 | oauth2-proxy | oauth2-proxy | oauth2-proxy/oauth2-proxy | GitHub OAuth |
@@ -230,6 +231,23 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 5. Test: `kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager -- amtool alert add PagerTest severity=critical namespace=monitoring --annotation=summary="paging test" --alertmanager.url=http://localhost:9093`. Expect the page after about 30 seconds (Alertmanager's group wait), then resolve the incident in PagerDuty.
 
 Alertmanager's `externalUrl` and Prometheus's `externalUrl` are set to the live `*.joeblack.nyc` hostnames so the links in a page open from a phone. They differ from the `*.k8s` hosts in the Public URLs table; update both when issue #5 is reconciled. Labels and annotations are sent to PagerDuty too, so keep secrets out of them. PagerDuty only hears about problems Alertmanager can see: if the whole cluster is down, nothing pages.
+
+## New Relic
+
+New Relic runs from a `HelmChart` resource that k3s's built-in helm-controller reconciles, so there is no `helm` command to run. The chart and its values live in `k8s/monitoring/newrelic.yaml`. The license key stays out of the repo: it sits in `.env` as `NEW_RELIC_LICENSE_KEY` and in the `newrelic-license` Secret.
+
+1. Put the key in `.env`, then run `make newrelic-secret`. It also creates the `newrelic` namespace if it's missing.
+2. Apply: `kubectl apply -f k8s/monitoring/newrelic.yaml`.
+3. Wait for the install job: `kubectl -n kube-system get job helm-install-newrelic-bundle`, then `kubectl -n newrelic get pods`.
+4. Check memory with `kubectl top nodes`. The nodes were at 69 to 84% before this install.
+
+To upgrade, change `version` or the values in the manifest and re-apply; the controller runs `helm upgrade`. To remove it, `kubectl delete -f k8s/monitoring/newrelic.yaml`. That leaves the `newrelic` namespace and the `newrelic-license` Secret in place; delete the namespace too if you want them gone (then re-run `make newrelic-secret` before a reinstall). Helm leaves any CRDs the chart installed behind.
+
+To rotate the license key, update `.env`, run `make newrelic-secret`, then `kubectl -n newrelic rollout restart deployment,daemonset,statefulset`. Running pods keep the old key until they restart.
+
+`kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
+
+Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
 
 ## Common Operations
 

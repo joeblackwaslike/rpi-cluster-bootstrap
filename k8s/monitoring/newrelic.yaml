@@ -1,0 +1,36 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: newrelic-bundle
+  namespace: kube-system
+spec:
+  repo: https://helm-charts.newrelic.com
+  chart: nri-bundle
+  version: 8.0.40
+  targetNamespace: newrelic
+  valuesContent: |-
+    global:
+      cluster: cluster
+      region: US
+      lowDataMode: true
+      customSecretName: newrelic-license
+      customSecretLicenseKey: licenseKey
+    kube-state-metrics:
+      enabled: true
+      image:
+        tag: v2.13.0
+    kubeEvents:
+      enabled: true
+    newrelic-prometheus-agent:
+      enabled: true
+      lowDataMode: true
+      config:
+        kubernetes:
+          integrations_filter:
+            enabled: false
+    nr-ebpf-agent:
+      enabled: false
+    k8s-agents-operator:
+      enabled: true
+    logging:
+      enabled: false
