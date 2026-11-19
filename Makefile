@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret
+.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret grafana-secret
 
 all: pxe-image
 
@@ -38,6 +38,25 @@ newrelic-secret:
 	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-license \
 		--from-file=licenseKey=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
+
+# Grafana reads the admin env only when its DB is first created, so a running Grafana also gets a reset
+grafana-secret:
+	@test $${#GRAFANA_ADMIN_PASSWORD} -ge 16 || (echo "ERROR: GRAFANA_ADMIN_PASSWORD must be set in .env to at least 16 characters (openssl rand -base64 30)" && exit 1)
+	@kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@printf '%s' "$$GRAFANA_ADMIN_PASSWORD" | kubectl -n monitoring create secret generic grafana-admin \
+		--from-literal=admin-user=admin \
+		--from-file=admin-password=/dev/stdin \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@if ! lookup=$$(kubectl -n monitoring get deploy kube-prometheus-stack-grafana -o name 2>&1); then \
+		case "$$lookup" in \
+			*NotFound*) echo "Grafana deployment not found, skipped the password reset (fine before the first install)"; exit 0 ;; \
+			*) echo "ERROR: grafana-admin Secret is updated but the Grafana deployment lookup failed: $$lookup"; exit 1 ;; \
+		esac; \
+	fi; \
+	printf '%s' "$$GRAFANA_ADMIN_PASSWORD" | kubectl -n monitoring exec -i deploy/kube-prometheus-stack-grafana -c grafana -- \
+		grafana cli admin reset-admin-password --password-from-stdin >/dev/null \
+		&& echo "Grafana admin password reset" \
+		|| { echo "ERROR: grafana-admin Secret is updated but the Grafana password reset failed; rerun make grafana-secret once the pod is Ready"; exit 1; }
 
 download: $(PIOSS_IMG)
 

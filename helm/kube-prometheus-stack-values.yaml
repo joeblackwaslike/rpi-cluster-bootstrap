@@ -64,7 +64,8 @@ kubeEtcd:
     port: 2381
     targetPort: 2381
 grafana:
-  adminPassword: changeme
+  admin:
+    existingSecret: grafana-admin
   ingress:
     enabled: false
   persistence:
