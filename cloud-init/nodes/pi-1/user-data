@@ -125,6 +125,8 @@ write_files:
     vm.overcommit_memory = 1
     kernel.panic = 10
     kernel.panic_on_oops = 1
+    fs.inotify.max_user_instances = 512
+    fs.inotify.max_user_watches = 524288
 
 runcmd:
 # Partition NVMe only if not already done
