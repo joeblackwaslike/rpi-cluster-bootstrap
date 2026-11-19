@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret
+.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret
 
 all: pxe-image
 
@@ -29,6 +29,14 @@ pagerduty-secret:
 	@printf '%s' "$$PAGERDUTY_ROUTING_KEY" | grep -Eq '^[A-Za-z0-9]{32}$$' || (echo "ERROR: PAGERDUTY_ROUTING_KEY must be set in .env to the 32 character Events API v2 integration key" && exit 1)
 	@kubectl -n monitoring create secret generic pagerduty-routing-key \
 		--from-literal=key="$$PAGERDUTY_ROUTING_KEY" \
+		--dry-run=client -o yaml | kubectl apply -f -
+
+# A New Relic license key: 40 characters ending in NRAL
+newrelic-secret:
+	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | grep -Eq '^[A-Za-z0-9]{36}NRAL$$' || (echo "ERROR: NEW_RELIC_LICENSE_KEY must be set in .env to the 40 character license key ending in NRAL" && exit 1)
+	@kubectl create namespace newrelic --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl -n newrelic create secret generic newrelic-license \
+		--from-literal=licenseKey="$$NEW_RELIC_LICENSE_KEY" \
 		--dry-run=client -o yaml | kubectl apply -f -
 
 download: $(PIOSS_IMG)

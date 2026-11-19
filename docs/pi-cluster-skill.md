@@ -71,6 +71,7 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
 | Loki | monitoring | grafana/loki-stack | 20Gi volume, 7 day compactor retention (the 10Gi disk filled with no retention). To resize: patch the PVC, `kubectl -n monitoring delete sts loki --cascade=orphan`, then helm upgrade |
 | Reloader | reloader | stakater/reloader | |
+| New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF and log forwarding off |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
 | Tailscale Operator | tailscale | tailscale/tailscale-operator | |
 | oauth2-proxy | oauth2-proxy | oauth2-proxy/oauth2-proxy | GitHub OAuth |
