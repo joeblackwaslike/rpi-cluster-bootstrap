@@ -6,7 +6,7 @@ defaultSettings:
   kubernetesClusterAutoscalerEnabled: "false"
   nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
   defaultReplicaCount: 2
-  replicaAutoBalance: least-effort
+  replicaAutoBalance: best-effort
   storageMinimalAvailablePercentage: 10
 persistence:
   defaultClassReplicaCount: 2

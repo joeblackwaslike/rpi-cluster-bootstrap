@@ -139,6 +139,14 @@ Also patch the CSI sidecar deployments (attacher, provisioner, resizer, snapshot
 **Why:** k3s with `kubelet-arg: root-dir=/var/lib/rancher/k3s/kubelet` uses a non-default kubelet root.
 Longhorn's Helm chart doesn't respect `csi.kubeletRootDir` fully — volume hostPaths AND container mountPaths must match.
 
+## Longhorn Replica Count
+
+Volumes use 2 replicas, set by `defaultSettings.defaultReplicaCount` and `persistence.defaultClassReplicaCount` in `helm/longhorn-values.yaml`. Longhorn ignores `defaultSettings.replicaCount` because it isn't a chart key, which is why the cluster ran 3 replicas until 2026-11-19.
+
+Lowering `numberOfReplicas` on an existing volume leaves the extra replica in place unless `replica-auto-balance` is on. We use `best-effort`. With `least-effort`, the cleanup on 2026-11-19 removed every replica from pi-2 and left pi-1 and pi-3 with 22 each.
+
+Each replica and engine runs as a process in its node's `instance-manager` pod. On 2026-11-19 that measured about 25 MiB per process, so replica count drives most of Longhorn's memory use.
+
 ## Cloudflare Tunnel
 
 **Tunnel ID:** `1ee1e71f-263e-4de6-a31b-7cb04cf79036`  
