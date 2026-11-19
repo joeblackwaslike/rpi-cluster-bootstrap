@@ -249,6 +249,16 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
 
+## Kernel page size (4 KB)
+
+The nodes boot `kernel8.img`, the common 64-bit kernel with 4 KB pages. A Pi 5's firmware loads `kernel_2712.img` by default, which uses 16 KB pages, and some arm64 images don't run on those: `newrelic-fluentbit-output` stops at start with `jemalloc: Unsupported system page size`.
+
+The switch is one line, `kernel=kernel8.img`, at the end of each node's `/tftpboot/<serial>/config.txt` on the PXE server. `setup-nfs-roots.sh` in `cloud-init/pxe-server/user-data` appends it when it builds a node's TFTP directory, so a new cluster gets it automatically. Check a node with `getconf PAGESIZE`; it prints `4096`.
+
+To change an existing node, edit its `config.txt` and reboot it. Do one node at a time and take the workers first, because pi-1 is the only control-plane node. Use `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --pod-selector='longhorn.io/component!=instance-manager'`: Longhorn's PodDisruptionBudget on `instance-manager` blocks a plain drain. After each reboot, uncordon the node and wait until every Longhorn volume reports `healthy` before touching the next one.
+
+The previous `config.txt` files are kept as `config.txt.16k-backup` in each serial directory on the PXE server; restoring one and rebooting returns that node to 16 KB pages.
+
 ## Common Operations
 
 **Refresh kubeconfig** (after k3s cert regeneration):
