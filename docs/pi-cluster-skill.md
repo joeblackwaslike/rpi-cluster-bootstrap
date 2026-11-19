@@ -71,7 +71,7 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
 | Loki | monitoring | grafana/loki-stack | 20Gi volume, 7 day compactor retention (the 10Gi disk filled with no retention). To resize: patch the PVC, `kubectl -n monitoring delete sts loki --cascade=orphan`, then helm upgrade |
 | Reloader | reloader | stakater/reloader | |
-| New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF and log forwarding off |
+| New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF agent off |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
 | Tailscale Operator | tailscale | tailscale/tailscale-operator | |
 | oauth2-proxy | oauth2-proxy | oauth2-proxy/oauth2-proxy | GitHub OAuth |
@@ -216,7 +216,7 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 `kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
 
-Log forwarding (`logging.enabled`) is off because the `newrelic-fluentbit-output` image (3.12.0) failed on the Pi 5 default of 16 KB pages with `jemalloc: Unsupported system page size`. The nodes now run 4 KB pages (see Kernel page size), so it can be turned on; test it first.
+Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512`, because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets the limit on new nodes; on a running node put it in `/etc/sysctl.d/99-inotify.conf`. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
 
 ## Kernel page size (4 KB)
 
