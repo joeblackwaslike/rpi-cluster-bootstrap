@@ -212,6 +212,8 @@ New Relic runs from a `HelmChart` resource that k3s's built-in helm-controller r
 
 To upgrade, change `version` or the values in the manifest and re-apply; the controller runs `helm upgrade`. To remove it, `kubectl delete -f k8s/monitoring/newrelic.yaml`. That leaves the `newrelic` namespace and the `newrelic-license` Secret in place; delete the namespace too if you want them gone (then re-run `make newrelic-secret` before a reinstall). Helm leaves any CRDs the chart installed behind.
 
+To rotate the license key, update `.env`, run `make newrelic-secret`, then `kubectl -n newrelic rollout restart deployment,daemonset,statefulset`. Running pods keep the old key until they restart.
+
 `kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
 
 Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
