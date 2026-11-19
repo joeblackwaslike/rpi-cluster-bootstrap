@@ -33,4 +33,6 @@ spec:
     k8s-agents-operator:
       enabled: true
     logging:
-      enabled: false
+      enabled: true
+    newrelic-logging:
+      lowDataMode: true
