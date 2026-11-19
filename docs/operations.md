@@ -189,6 +189,8 @@ Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the d
 | Tailscale trust oauth creds | k8s operator client id/secret |
 | k3s cluster token - joeblack-homelab | `token:` in `/etc/rancher/k3s/config.yaml` on all nodes, and `K3S_TOKEN` in `.env` |
 
+The Tailscale operator's `operator-oauth` Secret (namespace `tailscale`) is managed outside Helm. It carries `helm.sh/resource-policy: keep`, and `helm/tailscale-operator-values.yaml` sets `oauth: {}`. To replace the client, run `kubectl -n tailscale create secret generic operator-oauth --from-literal=client_id=... --from-literal=client_secret=... --dry-run=client -o yaml | kubectl apply -f -` with the values from "Tailscale trust oauth creds", then `kubectl -n tailscale rollout restart deploy/operator`.
+
 ## MCP Servers (Claude Code `~/.claude/settings.json`)
 
 - `kubernetes` — mcp-server-kubernetes, KUBECONFIG=/Users/joe/.kube/config  
