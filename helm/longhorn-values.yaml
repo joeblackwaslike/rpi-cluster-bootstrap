@@ -5,7 +5,10 @@ defaultSettings:
   defaultDataPath: /var/lib/longhorn
   kubernetesClusterAutoscalerEnabled: "false"
   nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-  replicaCount: 2
+  defaultReplicaCount: 2
+  replicaAutoBalance: least-effort
   storageMinimalAvailablePercentage: 10
+persistence:
+  defaultClassReplicaCount: 2
 ingress:
   enabled: false
