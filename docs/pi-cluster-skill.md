@@ -216,7 +216,7 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 `kube-state-metrics.image.tag` is pinned to `v2.13.0`, the tag New Relic's install command specifies; the chart's own default is newer. `global.region` is `US` because the chart can't infer a region from a key kept in a Secret. The eBPF agent is off for memory reasons; set `nr-ebpf-agent.enabled: true` to turn it on.
 
-Log forwarding (`logging.enabled`) is off too. The Pi 5 kernel uses 16 KB pages and the `newrelic-fluentbit-output` image (3.12.0) fails at start with `jemalloc: Unsupported system page size`, so the pods crash-loop. Re-test it after a chart bump before turning it on.
+Log forwarding (`logging.enabled`) is off because the `newrelic-fluentbit-output` image (3.12.0) failed on the Pi 5 default of 16 KB pages with `jemalloc: Unsupported system page size`. The nodes now run 4 KB pages (see Kernel page size), so it can be turned on; test it first.
 
 ## Kernel page size (4 KB)
 
@@ -224,9 +224,9 @@ The nodes boot `kernel8.img`, the common 64-bit kernel with 4 KB pages. A Pi 5's
 
 The switch is one line, `kernel=kernel8.img`, at the end of each node's `/tftpboot/<serial>/config.txt` on the PXE server. `setup-nfs-roots.sh` in `cloud-init/pxe-server/user-data` appends it when it builds a node's TFTP directory, so a new cluster gets it automatically. Check a node with `getconf PAGESIZE`; it prints `4096`.
 
-To change an existing node, edit its `config.txt` and reboot it. Do one node at a time and take the workers first, because pi-1 is the only control-plane node. Use `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --pod-selector='longhorn.io/component!=instance-manager'`: Longhorn's PodDisruptionBudget on `instance-manager` blocks a plain drain. After each reboot, uncordon the node and wait until every Longhorn volume reports `healthy` before touching the next one.
+To change an existing node, edit its `config.txt` and reboot it; re-running `setup-nfs-roots.sh` regenerates every `config.txt`, so a lasting change belongs in the script. Do one node at a time and take the workers first, because pi-1 is the only control-plane node and the API is unavailable for about 3 minutes while it reboots. Use `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --pod-selector='longhorn.io/component!=instance-manager'`: Longhorn's PodDisruptionBudget on `instance-manager` blocks a plain drain. After each reboot, uncordon the node and wait until every Longhorn volume reports `healthy` before touching the next one.
 
-The previous `config.txt` files are kept as `config.txt.16k-backup` in each serial directory on the PXE server; restoring one and rebooting returns that node to 16 KB pages.
+On the live PXE server the previous `config.txt` files were saved by hand as `config.txt.16k-backup` in each serial directory; a new cluster has no such backups. Restoring one and rebooting returns that node to 16 KB pages.
 
 ## Common Operations
 

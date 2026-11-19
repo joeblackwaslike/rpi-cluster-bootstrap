@@ -193,7 +193,7 @@ write_files:
       TFTP_DIR="$TFTPROOT/$SERIAL"
       mkdir -p "$TFTP_DIR"
       rsync -a "$BOOT_MNT/" "$TFTP_DIR/"
-      printf 'kernel=kernel8.img\n' >> "$TFTP_DIR/config.txt"
+      printf '\nkernel=kernel8.img\n' >> "$TFTP_DIR/config.txt"
       cat > "$TFTP_DIR/cmdline.txt" << CMDLINE
     console=serial0,115200 console=tty1 root=/dev/nfs nfsroot=$PXE_IP:$NFS_ROOT,vers=3 rw ip=dhcp rootwait
     CMDLINE
