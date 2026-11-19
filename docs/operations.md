@@ -35,6 +35,8 @@ tls-san: [192.168.1.149, pi-1]
 token: 83458d7f7efa21579c5d97fe3c10079f55e6a16320a37042b740408f70c79e9d
 disable: [servicelb, traefik]
 data-dir: /var/lib/rancher/k3s
+node-taint:
+- node-role.kubernetes.io/control-plane=:PreferNoSchedule
 kubelet-arg:
 - root-dir=/var/lib/rancher/k3s/kubelet
 etcd-arg:
@@ -44,6 +46,12 @@ etcd-arg:
 etcd-expose-metrics: true
 kube-apiserver-arg:
 - event-ttl=1h
+```
+
+k3s applies `node-taint` only when the node first registers. On a running pi-1, editing the config doesn't add the taint, so set it directly:
+
+```bash
+kubectl taint node pi-1 node-role.kubernetes.io/control-plane=:PreferNoSchedule --overwrite
 ```
 
 **Agent** (`/etc/rancher/k3s/config.yaml` on pi-2, pi-3):
@@ -138,6 +146,29 @@ Also patch the CSI sidecar deployments (attacher, provisioner, resizer, snapshot
 
 **Why:** k3s with `kubelet-arg: root-dir=/var/lib/rancher/k3s/kubelet` uses a non-default kubelet root.
 Longhorn's Helm chart doesn't respect `csi.kubeletRootDir` fully — volume hostPaths AND container mountPaths must match.
+
+## Longhorn Replica Count
+
+Volumes use 2 replicas, set by `defaultSettings.defaultReplicaCount` and `persistence.defaultClassReplicaCount` in `helm/longhorn-values.yaml`. Longhorn ignores `defaultSettings.replicaCount` because it isn't a chart key, which is why the cluster ran 3 replicas until 2026-11-19.
+
+Lowering `numberOfReplicas` on an existing volume leaves the extra replica in place unless `replica-auto-balance` is on (`cleanupAutoBalancedReplicas` in longhorn-manager v1.11.2 `controller/volume_controller.go` returns early when it is disabled). We use `best-effort`. With `least-effort`, the cleanup on 2026-11-19 removed every replica from pi-2 and left pi-1 and pi-3 with 22 replicas each.
+
+Each replica and engine runs as a process in its node's `instance-manager` pod. On 2026-11-19 that measured about 25 MiB per process, so replica count drives most of Longhorn's memory use.
+
+pi-1 holds no replicas. Its Longhorn node has `allowScheduling: false`, which is runtime state, not a Helm value, so set it again after a rebuild:
+
+```bash
+kubectl -n longhorn-system patch nodes.longhorn.io pi-1 --type merge \
+  -p '{"spec":{"allowScheduling":false,"evictionRequested":true}}'
+```
+
+This keeps replica memory off the control-plane node. A pi-2 or pi-3 reboot leaves every volume on one replica until it comes back and rebuilds.
+
+## Prometheus Memory
+
+`helm/kube-prometheus-stack-values.yaml` drops the apiserver request/response histograms (about 100k of 211k series on 2026-11-19) and disables the `kubeApiserverAvailability`, `kubeApiserverBurnrate`, `kubeApiserverHistogram` and `kubeApiserverSlos` rule groups that read them. As a result, the "Kubernetes / API server" Grafana dashboard shows empty latency, availability and error-budget panels and the `KubeAPIErrorBudgetBurn` alert no longer exists. `KubeAPIDown` and `KubeClientCertificateExpiration` still fire.
+
+Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the drop and 827 MiB right after the restart with 7d retention. If it gets OOMKilled, raise the limit or shorten retention before re-adding the histograms.
 
 ## Cloudflare Tunnel
 

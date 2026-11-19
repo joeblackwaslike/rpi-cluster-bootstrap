@@ -48,6 +48,8 @@ write_files:
     data-dir: /var/lib/rancher/k3s
     node-label:
     - node.kubernetes.io/instance-type=pi-5
+    node-taint:
+    - node-role.kubernetes.io/control-plane=:PreferNoSchedule
     kubelet-arg:
     - "root-dir=/var/lib/rancher/k3s/kubelet"
     etcd-arg:
