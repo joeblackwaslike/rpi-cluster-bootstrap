@@ -156,26 +156,6 @@ ensure_workflow() {
 CRIT=$(ensure_policy "Pi cluster critical")
 WARN=$(ensure_policy "Pi cluster warning")
 
-ensure_condition "$CRIT" "Node not ready or silent" \
-	"SELECT latest(condition.Ready) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" BELOW 1 300 CRITICAL 300
-ensure_condition "$CRIT" "etcd has no leader or is silent" \
-	"SELECT latest(etcd_server_has_leader) FROM Metric WHERE job = 'kube-etcd' FACET instance" BELOW 1 300 CRITICAL 300
-
-ensure_condition "$WARN" "etcd database over 70% of quota" \
-	"SELECT max(etcd_mvcc_db_total_size_in_bytes) / max(etcd_server_quota_backend_bytes) FROM Metric WHERE job = 'kube-etcd' FACET instance" ABOVE 0.7 600 CRITICAL
-ensure_condition "$WARN" "Node memory over 92%" \
-	"SELECT max(allocatableMemoryUtilization) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" ABOVE 92 600 CRITICAL
-ensure_condition "$WARN" "Node disk over 85%" \
-	"SELECT max(fsCapacityUtilization) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" ABOVE 85 600 CRITICAL
-ensure_condition "$WARN" "Volume over 85% full" \
-	"SELECT max(fsUsedPercent) FROM K8sVolumeSample WHERE clusterName = 'cluster' AND pvcName IS NOT NULL FACET pvcName" ABOVE 85 600 CRITICAL
-ensure_condition "$WARN" "Pod crash looping" \
-	"SELECT uniqueCount(podName) FROM K8sContainerSample WHERE clusterName = 'cluster' AND status = 'Waiting' AND reason = 'CrashLoopBackOff' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
-ensure_condition "$WARN" "Deployment missing replicas" \
-	"SELECT latest(podsMissing) FROM K8sDeploymentSample WHERE clusterName = 'cluster' FACET namespaceName, deploymentName" ABOVE 0 900 CRITICAL
-ensure_condition "$WARN" "Job failed" \
-	"SELECT uniqueCount(jobName) FROM K8sJobSample WHERE clusterName = 'cluster' AND failed = 'true' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
-
 PD_DEST=$(ensure_destination "PagerDuty" pagerduty_destination)
 PD_CHAN=$(ensure_channel "PagerDuty" PAGERDUTY_SERVICE_INTEGRATION "$PD_DEST" \
 	'[{"key":"summary","value":"{{ annotations.title.[0] }}"}]')
@@ -185,5 +165,25 @@ PUSH_WARN_CHAN=$(ensure_channel "Mobile push (warning)" MOBILE_PUSH "$PUSH_DEST"
 
 ensure_workflow "Pi cluster critical" "$CRIT" "$PD_CHAN" "$PUSH_CRIT_CHAN"
 ensure_workflow "Pi cluster warning" "$WARN" "$PUSH_WARN_CHAN"
+
+ensure_condition "$CRIT" "Node not ready or silent" \
+	"SELECT latest(condition.Ready) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" BELOW 1 300 CRITICAL 300
+ensure_condition "$CRIT" "etcd has no leader or is silent" \
+	"SELECT latest(etcd_server_has_leader) FROM Metric WHERE job = 'kube-etcd' FACET instance" BELOW 1 300 CRITICAL 300
+
+ensure_condition "$WARN" "etcd database over 70% of quota" \
+	"SELECT max(etcd_mvcc_db_total_size_in_bytes) / max(etcd_server_quota_backend_bytes) FROM Metric WHERE job = 'kube-etcd' FACET instance" ABOVE 0.7 600 CRITICAL 300 false
+ensure_condition "$WARN" "Node memory over 92%" \
+	"SELECT max(allocatableMemoryUtilization) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" ABOVE 92 600 CRITICAL 300 false
+ensure_condition "$WARN" "Node disk over 85%" \
+	"SELECT max(fsCapacityUtilization) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" ABOVE 85 600 CRITICAL 300 false
+ensure_condition "$WARN" "Volume over 85% full" \
+	"SELECT max(fsUsedPercent) FROM K8sVolumeSample WHERE clusterName = 'cluster' AND pvcName IS NOT NULL FACET pvcName" ABOVE 85 600 CRITICAL 300 false
+ensure_condition "$WARN" "Pod crash looping" \
+	"SELECT uniqueCount(podName) FROM K8sContainerSample WHERE clusterName = 'cluster' AND status = 'Waiting' AND reason = 'CrashLoopBackOff' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
+ensure_condition "$WARN" "Deployment missing replicas" \
+	"SELECT latest(podsMissing) FROM K8sDeploymentSample WHERE clusterName = 'cluster' FACET namespaceName, deploymentName" ABOVE 0 900 CRITICAL 300 false
+ensure_condition "$WARN" "Job failed" \
+	"SELECT uniqueCount(jobName) FROM K8sJobSample WHERE clusterName = 'cluster' AND failed = 'true' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
 
 echo "done"
