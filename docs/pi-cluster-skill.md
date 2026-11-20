@@ -217,6 +217,21 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512` (with `fs.inotify.max_user_watches = 524288`), because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets both in `/etc/sysctl.d/99-k3s.conf` on new nodes. The three running nodes were patched by hand in `/etc/sysctl.d/99-inotify.conf`; use the same file on any other running node. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
 
+## New Relic alerts
+
+`make newrelic-alerts` creates the alert policies, conditions, notification destinations and workflows in the New Relic account through its NerdGraph API. It's safe to re-run: anything that already exists, matched by name, is skipped. It does not update a condition that already exists, so to change a threshold, edit it in New Relic or delete the condition and re-run.
+
+It needs `NEW_RELIC_API_KEY` (a User key, starts `NRAK-`) and `NEW_RELIC_ACCOUNT_ID` in `.env`. The PagerDuty key is only needed the first time, when the PagerDuty destination gets created. The script takes it from `PAGERDUTY_ROUTING_KEY` in the environment, or else reads the `pagerduty-routing-key` Secret in the cluster. To rotate that key, delete the "PagerDuty" destination in New Relic (its channel too) and re-run.
+
+Two policies, each with its own workflow:
+
+- **Pi cluster critical** pages through PagerDuty and also sends a push to the New Relic mobile app. It fires when a node is not Ready or stops reporting for 5 minutes, or when etcd has no leader or stops reporting.
+- **Pi cluster warning** sends a push only. It covers etcd over 70% of quota, node memory over 92%, node disk over 85%, a volume over 85% full, a crash-looping pod, a deployment missing replicas, and a failed job.
+
+A New Relic notification channel can belong to only one workflow, which is why the push destination has two channels. The crash-looping-pod and failed-job conditions close their incident 5 minutes after their data disappears, because a filtered query has no rows once the problem clears.
+
+etcd metrics reach New Relic through an extra scrape job (`kube-etcd`, `192.168.1.149:2381`, pi-1's etcd metrics port) in the Prometheus agent's config in `k8s/monitoring/newrelic.yaml`. If pi-1's address changes, update the target there. The mobile push destination belongs to one user and needs that person logged in to the New Relic app.
+
 ## Kernel page size (4 KB)
 
 The nodes boot `kernel8.img`, the common 64-bit kernel with 4 KB pages. A Pi 5's firmware loads `kernel_2712.img` by default, which uses 16 KB pages, and some arm64 images don't run on those: `newrelic-fluentbit-output` stops at start with `jemalloc: Unsupported system page size`.

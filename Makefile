@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret
+.PHONY: all download pxe-image flash clean check-env ntfy-secret pagerduty-secret newrelic-secret newrelic-alerts
 
 all: pxe-image
 
@@ -38,6 +38,9 @@ newrelic-secret:
 	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-license \
 		--from-file=licenseKey=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
+
+newrelic-alerts:
+	@scripts/newrelic-alerts
 
 download: $(PIOSS_IMG)
 
