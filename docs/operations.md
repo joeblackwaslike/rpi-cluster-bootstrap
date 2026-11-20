@@ -248,6 +248,14 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512` (with `fs.inotify.max_user_watches = 524288`), because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets both in `/etc/sysctl.d/99-k3s.conf` on new nodes. The three running nodes were patched by hand in `/etc/sysctl.d/99-inotify.conf`; use the same file on any other running node. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
 
+## New Relic APM auto-instrumentation
+
+The k8s-agents-operator injects the New Relic agent into pods that opt in. `k8s/monitoring/newrelic-instrumentation.yaml` is the `Instrumentation` resource: apply it with `kubectl apply -f`. It targets pods labeled `instrument=true`, in any namespace, and injects the Node.js agent (`newrelic/newrelic-node-init`). The selector uses `operator: In` with a list of values; the operator does not accept `Eq`.
+
+To instrument a workload, add `instrument: "true"` to its **pod template** labels (not just the Deployment's) and let it roll. Set `NEW_RELIC_APP_NAME` on the container to name the app in New Relic. The operator copies the license key from the `newrelic-key-secret` Secret (field `new_relic_license_key`, in the `newrelic` namespace) into each instrumented pod's namespace. `make newrelic-secret` creates it next to `newrelic-license`. A rotated key does not reach the copies already made; delete them and restart the pods.
+
+Limits: the Node.js init image supports glibc Linux on amd64, arm and arm64, not Alpine (musl), and the agent runs on Node, not Bun. A Node 22 glibc pod labeled this way reported transactions to New Relic within about a minute. A workload on an Alpine or Bun image, such as ai-listings, needs a glibc Node runtime first.
+
 ## New Relic alerts
 
 `make newrelic-alerts` creates the alert policies, conditions, notification destinations and workflows in the New Relic account through its NerdGraph API. It's safe to re-run: anything that already exists, matched by name, is skipped. It does not update a condition that already exists, so to change a threshold, edit it in New Relic or delete the condition and re-run.
