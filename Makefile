@@ -38,6 +38,9 @@ newrelic-secret:
 	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-license \
 		--from-file=licenseKey=/dev/stdin \
 		--dry-run=client -o yaml | kubectl apply -f -
+	@printf '%s' "$$NEW_RELIC_LICENSE_KEY" | kubectl -n newrelic create secret generic newrelic-key-secret \
+		--from-file=new_relic_license_key=/dev/stdin \
+		--dry-run=client -o yaml | kubectl apply -f -
 
 newrelic-alerts:
 	@scripts/newrelic-alerts

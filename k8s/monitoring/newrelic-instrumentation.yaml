@@ -1,0 +1,14 @@
+apiVersion: newrelic.com/v1beta2
+kind: Instrumentation
+metadata:
+  name: newrelic-instrumentation
+  namespace: newrelic
+spec:
+  agent:
+    language: nodejs
+    image: newrelic/newrelic-node-init:14.13.0
+  podLabelSelector:
+    matchExpressions:
+      - key: instrument
+        operator: In
+        values: ["true"]
