@@ -1,32 +1,41 @@
 #!/usr/bin/env bash
 # Creates the New Relic alert policies, conditions, destinations and workflows
 # for the cluster. Safe to re-run: anything that already exists (matched by
-# name) is left alone. Needs NEW_RELIC_API_KEY (a User key, NRAK-...),
-# NEW_RELIC_ACCOUNT_ID and PAGERDUTY_ROUTING_KEY in the environment.
+# name) is left alone, including its settings. Needs NEW_RELIC_API_KEY (a User
+# key, NRAK-...) and NEW_RELIC_ACCOUNT_ID in the environment. The PagerDuty
+# Events API v2 key is read from PAGERDUTY_ROUTING_KEY, or else from the
+# pagerduty-routing-key Secret in the cluster, and only when the PagerDuty
+# destination has to be created.
 set -euo pipefail
 
 : "${NEW_RELIC_API_KEY:?set NEW_RELIC_API_KEY in .env}"
 : "${NEW_RELIC_ACCOUNT_ID:?set NEW_RELIC_ACCOUNT_ID in .env}"
-: "${PAGERDUTY_ROUTING_KEY:?set PAGERDUTY_ROUTING_KEY in .env}"
+[[ $NEW_RELIC_ACCOUNT_ID =~ ^[0-9]+$ ]] || {
+	echo "NEW_RELIC_ACCOUNT_ID must be a number" >&2
+	exit 1
+}
+ACCT=$NEW_RELIC_ACCOUNT_ID
+
+ERRORS='[.. | (.error?, (.errors?[]?)) | select(. != null) | (.message // .description // "unknown error")]'
 
 gql() {
 	local out
-	out=$(jq -n --arg q "$1" --argjson v "${2:-{\}}" '{query:$q,variables:$v}' |
-		curl -fsS https://api.newrelic.com/graphql \
-			-H "API-Key: $NEW_RELIC_API_KEY" -H 'Content-Type: application/json' -d @-)
-	if jq -e '.errors' <<<"$out" >/dev/null; then
-		echo "NerdGraph error: $(jq -c '.errors' <<<"$out")" >&2
+	out=$(jq -n --arg q "$1" --slurpfile v <(printf '%s' "${2:-{\}}") '{query:$q,variables:$v[0]}' |
+		curl -fsS --max-time 30 https://api.newrelic.com/graphql \
+			-H @<(printf 'API-Key: %s' "$NEW_RELIC_API_KEY") -H 'Content-Type: application/json' -d @-)
+	if ! jq -e "$ERRORS | length == 0" <<<"$out" >/dev/null; then
+		echo "NerdGraph error: $(jq -c "$ERRORS" <<<"$out")" >&2
 		exit 1
 	fi
-	jq -e '[.. | (.error?, .errors?) | select(. != null and . != [])] | length == 0' <<<"$out" >/dev/null ||
-		{
-			echo "NerdGraph error: $(jq -c '[.. | (.error?, .errors?) | select(. != null and . != [])]' <<<"$out")" >&2
-			exit 1
-		}
 	printf '%s' "$out"
 }
 
-ACCT=$NEW_RELIC_ACCOUNT_ID
+need_id() {
+	[[ -n $1 && $1 != null ]] || {
+		echo "no id returned creating $2" >&2
+		exit 1
+	}
+}
 
 ensure_policy() {
 	local id
@@ -37,14 +46,18 @@ ensure_policy() {
 		id=$(gql 'mutation($a:Int!,$p:AlertsPolicyInput!){alertsPolicyCreate(accountId:$a,policy:$p){id}}' \
 			"$(jq -n --argjson a "$ACCT" --arg n "$1" '{a:$a,p:{name:$n,incidentPreference:"PER_CONDITION_AND_TARGET"}}')" |
 			jq -r '.data.alertsPolicyCreate.id')
+		need_id "$id" "policy $1"
 		echo "created policy $1 ($id)" >&2
 	fi
 	printf '%s' "$id"
 }
 
-# args: policy_id name nrql operator threshold duration_seconds priority signal_loss_seconds
+# args: policy_id name nrql operator threshold duration_seconds priority [signal_loss_seconds [open_on_loss]]
+# A condition on a filtered query has no data once the problem clears, so it needs
+# signal_loss_seconds with open_on_loss=false to close its incident; for a
+# condition whose silence is itself the problem, leave open_on_loss true.
 ensure_condition() {
-	local pid=$1 name=$2 nrql=$3 op=$4 thr=$5 dur=$6 prio=$7 loss=${8:-0}
+	local pid=$1 name=$2 nrql=$3 op=$4 thr=$5 dur=$6 prio=$7 loss=${8:-0} open=${9:-true}
 	local existing
 	existing=$(gql 'query($a:Int!,$p:ID!){actor{account(id:$a){alerts{nrqlConditionsSearch(searchCriteria:{policyId:$p}){nrqlConditions{name}}}}}}' \
 		"$(jq -n --argjson a "$ACCT" --arg p "$pid" '{a:$a,p:$p}')" |
@@ -52,46 +65,67 @@ ensure_condition() {
 	[ -n "$existing" ] && return 0
 	local cond
 	cond=$(jq -n --arg name "$name" --arg nrql "$nrql" --arg op "$op" --argjson thr "$thr" \
-		--argjson dur "$dur" --arg prio "$prio" --argjson loss "$loss" '
+		--argjson dur "$dur" --arg prio "$prio" --argjson loss "$loss" --argjson open "$open" '
     {name:$name, enabled:true, nrql:{query:$nrql},
      signal:{aggregationWindow:60, aggregationMethod:"EVENT_FLOW", aggregationDelay:120},
      terms:[{threshold:$thr, thresholdDuration:$dur, thresholdOccurrences:"ALL", operator:$op, priority:$prio}],
      valueFunction:"SINGLE_VALUE", violationTimeLimitSeconds:86400}
-    + (if $loss > 0 then {expiration:{expirationDuration:$loss, openViolationOnExpiration:true, closeViolationsOnExpiration:true}} else {} end)')
+    + (if $loss > 0 then {expiration:{expirationDuration:$loss, openViolationOnExpiration:$open, closeViolationsOnExpiration:true}} else {} end)')
 	gql 'mutation($a:Int!,$p:ID!,$c:AlertsNrqlConditionStaticInput!){alertsNrqlConditionStaticCreate(accountId:$a,policyId:$p,condition:$c){id}}' \
 		"$(jq -n --argjson a "$ACCT" --arg p "$pid" --argjson c "$cond" '{a:$a,p:$p,c:$c}')" >/dev/null
 	echo "created condition $name" >&2
 }
 
+pagerduty_destination() {
+	local key=${PAGERDUTY_ROUTING_KEY:-}
+	[ -n "$key" ] || key=$(kubectl -n monitoring get secret pagerduty-routing-key -o jsonpath='{.data.key}' | base64 -d)
+	[ -n "$key" ] || {
+		echo "set PAGERDUTY_ROUTING_KEY or create the pagerduty-routing-key Secret (make pagerduty-secret)" >&2
+		exit 1
+	}
+	PD_KEY=$key jq -n '{type:"PAGERDUTY_SERVICE_INTEGRATION", name:"PagerDuty", properties:[], auth:{type:"TOKEN", token:{prefix:"", token:$ENV.PD_KEY}}}'
+}
+
+mobile_push_destination() {
+	jq -n --arg u "$(gql '{actor{user{id}}}' | jq -r '.data.actor.user.id')" \
+		'{type:"MOBILE_PUSH", name:"Mobile push", properties:[{key:"userId", value:$u}]}'
+}
+
+# args: name spec_function
 ensure_destination() {
-	local name=$1 spec=$2 id
+	local name=$1 spec_fn=$2 id
 	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{destinations{entities{id name}}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiNotifications.destinations.entities[] | select(.name==$n) | .id')
 	if [ -z "$id" ]; then
 		id=$(gql 'mutation($a:Int!,$d:AiNotificationsDestinationInput!){aiNotificationsCreateDestination(accountId:$a,destination:$d){destination{id}error{...on AiNotificationsResponseError{description}...on AiNotificationsConstraintsError{constraints{name}}}}}' \
-			"$(jq -n --argjson a "$ACCT" --argjson d "$spec" '{a:$a,d:$d}')" |
+			"$("$spec_fn" | jq -c --argjson a "$ACCT" '{a:$a,d:.}')" |
 			jq -r '.data.aiNotificationsCreateDestination.destination.id')
+		need_id "$id" "destination $name"
 		echo "created destination $name ($id)" >&2
 	fi
 	printf '%s' "$id"
 }
 
+# args: name type destination_id [extra_properties_json]
 ensure_channel() {
-	local name=$1 spec=$2 id
+	local name=$1 type=$2 dest=$3 props=${4:-[]} id
 	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{channels{entities{id name}}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiNotifications.channels.entities[] | select(.name==$n) | .id')
 	if [ -z "$id" ]; then
 		id=$(gql 'mutation($a:Int!,$c:AiNotificationsChannelInput!){aiNotificationsCreateChannel(accountId:$a,channel:$c){channel{id}error{...on AiNotificationsResponseError{description}...on AiNotificationsConstraintsError{constraints{name}}}}}' \
-			"$(jq -n --argjson a "$ACCT" --argjson c "$spec" '{a:$a,c:$c}')" |
+			"$(jq -n --argjson a "$ACCT" --arg n "$name" --arg t "$type" --arg d "$dest" --argjson p "$props" \
+				'{a:$a,c:{type:$t, product:"IINT", name:$n, destinationId:$d, properties:$p}}')" |
 			jq -r '.data.aiNotificationsCreateChannel.channel.id')
+		need_id "$id" "channel $name"
 		echo "created channel $name ($id)" >&2
 	fi
 	printf '%s' "$id"
 }
 
 # args: name policy_id channel_id...
+# A channel can belong to only one workflow, so each workflow gets its own.
 ensure_workflow() {
 	local name=$1 pid=$2
 	shift 2
@@ -126,29 +160,22 @@ ensure_condition "$WARN" "Node memory over 92%" \
 ensure_condition "$WARN" "Node disk over 85%" \
 	"SELECT max(fsCapacityUtilization) FROM K8sNodeSample WHERE clusterName = 'cluster' FACET nodeName" ABOVE 85 600 CRITICAL
 ensure_condition "$WARN" "Volume over 85% full" \
-	"SELECT max(fsUsedPercent) FROM K8sVolumeSample WHERE clusterName = 'cluster' FACET pvcName" ABOVE 85 600 CRITICAL
+	"SELECT max(fsUsedPercent) FROM K8sVolumeSample WHERE clusterName = 'cluster' AND pvcName IS NOT NULL FACET pvcName" ABOVE 85 600 CRITICAL
 ensure_condition "$WARN" "Pod crash looping" \
-	"SELECT uniqueCount(podName) FROM K8sContainerSample WHERE clusterName = 'cluster' AND status = 'Waiting' AND reason = 'CrashLoopBackOff' FACET namespaceName" ABOVE 0 300 CRITICAL
+	"SELECT uniqueCount(podName) FROM K8sContainerSample WHERE clusterName = 'cluster' AND status = 'Waiting' AND reason = 'CrashLoopBackOff' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
 ensure_condition "$WARN" "Deployment missing replicas" \
 	"SELECT latest(podsMissing) FROM K8sDeploymentSample WHERE clusterName = 'cluster' FACET namespaceName, deploymentName" ABOVE 0 900 CRITICAL
 ensure_condition "$WARN" "Job failed" \
-	"SELECT uniqueCount(jobName) FROM K8sJobSample WHERE clusterName = 'cluster' AND failed = 'true' FACET namespaceName" ABOVE 0 300 CRITICAL
+	"SELECT uniqueCount(jobName) FROM K8sJobSample WHERE clusterName = 'cluster' AND failed = 'true' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
 
-USER_ID=$(gql '{actor{user{id}}}' | jq -r '.data.actor.user.id')
+PD_DEST=$(ensure_destination "PagerDuty" pagerduty_destination)
+PD_CHAN=$(ensure_channel "PagerDuty" PAGERDUTY_SERVICE_INTEGRATION "$PD_DEST" \
+	'[{"key":"summary","value":"{{ annotations.title.[0] }}"}]')
+PUSH_DEST=$(ensure_destination "Mobile push" mobile_push_destination)
+PUSH_CRIT_CHAN=$(ensure_channel "Mobile push" MOBILE_PUSH "$PUSH_DEST")
+PUSH_WARN_CHAN=$(ensure_channel "Mobile push (warning)" MOBILE_PUSH "$PUSH_DEST")
 
-PD_DEST=$(ensure_destination "PagerDuty" "$(jq -n --arg k "$PAGERDUTY_ROUTING_KEY" \
-	'{type:"PAGERDUTY_SERVICE_INTEGRATION", name:"PagerDuty", properties:[], auth:{type:"TOKEN", token:{prefix:"", token:$k}}}')")
-PD_CHAN=$(ensure_channel "PagerDuty" "$(jq -n --arg d "$PD_DEST" \
-	'{type:"PAGERDUTY_SERVICE_INTEGRATION", product:"IINT", name:"PagerDuty", destinationId:$d, properties:[{key:"summary", value:"{{ annotations.title.[0] }}"}]}')")
-PUSH_DEST=$(ensure_destination "Mobile push" "$(jq -n --arg u "$USER_ID" \
-	'{type:"MOBILE_PUSH", name:"Mobile push", properties:[{key:"userId", value:$u}]}')")
-PUSH_CHAN=$(ensure_channel "Mobile push" "$(jq -n --arg d "$PUSH_DEST" \
-	'{type:"MOBILE_PUSH", product:"IINT", name:"Mobile push", destinationId:$d, properties:[]}')")
-
-PUSH_WARN_CHAN=$(ensure_channel "Mobile push (warning)" "$(jq -n --arg d "$PUSH_DEST" \
-	'{type:"MOBILE_PUSH", product:"IINT", name:"Mobile push (warning)", destinationId:$d, properties:[]}')")
-
-ensure_workflow "Pi cluster critical" "$CRIT" "$PD_CHAN" "$PUSH_CHAN"
+ensure_workflow "Pi cluster critical" "$CRIT" "$PD_CHAN" "$PUSH_CRIT_CHAN"
 ensure_workflow "Pi cluster warning" "$WARN" "$PUSH_WARN_CHAN"
 
 echo "done"

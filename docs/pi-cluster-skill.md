@@ -221,14 +221,14 @@ Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs tw
 
 `make newrelic-alerts` creates the alert policies, conditions, notification destinations and workflows in the New Relic account through its NerdGraph API. It's safe to re-run: anything that already exists, matched by name, is skipped. It does not update a condition that already exists, so to change a threshold, edit it in New Relic or delete the condition and re-run.
 
-It needs `NEW_RELIC_API_KEY` (a User key, starts `NRAK-`) and `NEW_RELIC_ACCOUNT_ID` in `.env`, plus `PAGERDUTY_ROUTING_KEY` in the environment. If that key isn't in `.env`, read it from the cluster: `PAGERDUTY_ROUTING_KEY=$(kubectl -n monitoring get secret pagerduty-routing-key -o jsonpath='{.data.key}' | base64 -d) make newrelic-alerts`.
+It needs `NEW_RELIC_API_KEY` (a User key, starts `NRAK-`) and `NEW_RELIC_ACCOUNT_ID` in `.env`. The PagerDuty key is only needed the first time, when the PagerDuty destination gets created. The script takes it from `PAGERDUTY_ROUTING_KEY` in the environment, or else reads the `pagerduty-routing-key` Secret in the cluster. To rotate that key, delete the "PagerDuty" destination in New Relic (its channel too) and re-run.
 
 Two policies, each with its own workflow:
 
 - **Pi cluster critical** pages through PagerDuty and also sends a push to the New Relic mobile app. It fires when a node is not Ready or stops reporting for 5 minutes, or when etcd has no leader or stops reporting.
 - **Pi cluster warning** sends a push only. It covers etcd over 70% of quota, node memory over 92%, node disk over 85%, a volume over 85% full, a crash-looping pod, a deployment missing replicas, and a failed job.
 
-A New Relic notification channel can belong to only one workflow, which is why the push destination has two channels.
+A New Relic notification channel can belong to only one workflow, which is why the push destination has two channels. The crash-looping-pod and failed-job conditions close their incident 5 minutes after their data disappears, because a filtered query has no rows once the problem clears.
 
 etcd metrics reach New Relic through an extra scrape job (`kube-etcd`, `192.168.1.149:2381`, pi-1's etcd metrics port) in the Prometheus agent's config in `k8s/monitoring/newrelic.yaml`. If pi-1's address changes, update the target there. The mobile push destination belongs to one user and needs that person logged in to the New Relic app.
 
