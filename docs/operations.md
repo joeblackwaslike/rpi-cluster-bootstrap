@@ -77,7 +77,6 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | Cloudflare Tunnel | cloudflared | raw manifests | 2024.8.3, HTTP2 protocol |
 | Longhorn | longhorn-system | longhorn/longhorn | CSI kubeletRootDir patched |
 | kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
-| Loki | monitoring | grafana/loki-stack | 20Gi volume, 7 day compactor retention (the 10Gi disk filled with no retention). To resize: patch the PVC, `kubectl -n monitoring delete sts loki --cascade=orphan`, then helm upgrade |
 | Reloader | reloader | stakater/reloader | |
 | New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF agent off |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
@@ -101,7 +100,7 @@ Always use DNS01 with the lego CronJob.
 
 All `*.k8s` and explicit subdomains CNAME → `1ee1e71f-263e-4de6-a31b-7cb04cf79036.cfargotunnel.com.`
 
-Explicit records: `oauth.k8s`, `grafana.k8s`, `prometheus.k8s`, `dashboard.k8s`, `longhorn.k8s`, `alertmanager.k8s`, `loki.k8s`
+Explicit records: `oauth.k8s`, `grafana.k8s`, `prometheus.k8s`, `dashboard.k8s`, `longhorn.k8s`, `alertmanager.k8s`
 
 **Note:** `.nyc` TLD cannot use Cloudflare nameservers. Domain stays on Porkbun.
 
