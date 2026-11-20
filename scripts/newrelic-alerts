@@ -28,6 +28,10 @@ gql() {
 		echo "NerdGraph error: $(jq -c "$ERRORS" <<<"$out")" >&2
 		exit 1
 	fi
+	if jq -e '[.. | .nextCursor? | select(. != null)] | length > 0' <<<"$out" >/dev/null; then
+		echo "NerdGraph returned more than one page of results; this script does not page, so refusing to continue" >&2
+		exit 1
+	fi
 	printf '%s' "$out"
 }
 
@@ -97,7 +101,7 @@ mobile_push_destination() {
 # args: name spec_function
 ensure_destination() {
 	local name=$1 spec_fn=$2 id spec
-	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{destinations{entities{id name}}}}}}' \
+	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{destinations{entities{id name}nextCursor}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiNotifications.destinations.entities[] | select(.name==$n) | .id')
 	if [ -z "$id" ]; then
@@ -114,7 +118,7 @@ ensure_destination() {
 # args: name type destination_id [extra_properties_json]
 ensure_channel() {
 	local name=$1 type=$2 dest=$3 props=${4:-[]} id
-	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{channels{entities{id name}}}}}}' \
+	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{channels{entities{id name}nextCursor}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiNotifications.channels.entities[] | select(.name==$n) | .id')
 	if [ -z "$id" ]; then
@@ -134,7 +138,7 @@ ensure_workflow() {
 	local name=$1 pid=$2
 	shift 2
 	local existing
-	existing=$(gql 'query($a:Int!){actor{account(id:$a){aiWorkflows{workflows{entities{name}}}}}}' \
+	existing=$(gql 'query($a:Int!){actor{account(id:$a){aiWorkflows{workflows{entities{name}nextCursor}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiWorkflows.workflows.entities[] | select(.name==$n) | .name')
 	[ -n "$existing" ] && return 0
