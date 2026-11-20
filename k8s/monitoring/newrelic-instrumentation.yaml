@@ -6,7 +6,7 @@ metadata:
 spec:
   agent:
     language: nodejs
-    image: newrelic/newrelic-node-init:latest
+    image: newrelic/newrelic-node-init:14.13.0
   podLabelSelector:
     matchExpressions:
       - key: instrument
