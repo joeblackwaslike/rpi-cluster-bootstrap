@@ -19,8 +19,9 @@ ACCT=$NEW_RELIC_ACCOUNT_ID
 ERRORS='[.. | (.error?, (.errors?[]?)) | select(. != null) | (.message // .description // "unknown error")]'
 
 gql() {
-	local out
-	out=$(jq -n --arg q "$1" --slurpfile v <(printf '%s' "${2:-{\}}") '{query:$q,variables:$v[0]}' |
+	local out vars=${2-}
+	[ -n "$vars" ] || vars='{}'
+	out=$(jq -n --arg q "$1" --slurpfile v <(printf '%s' "$vars") '{query:$q,variables:$v[0]}' |
 		curl -fsS --max-time 30 https://api.newrelic.com/graphql \
 			-H @<(printf 'API-Key: %s' "$NEW_RELIC_API_KEY") -H 'Content-Type: application/json' -d @-)
 	if ! jq -e "$ERRORS | length == 0" <<<"$out" >/dev/null; then
@@ -87,19 +88,22 @@ pagerduty_destination() {
 }
 
 mobile_push_destination() {
-	jq -n --arg u "$(gql '{actor{user{id}}}' | jq -r '.data.actor.user.id')" \
-		'{type:"MOBILE_PUSH", name:"Mobile push", properties:[{key:"userId", value:$u}]}'
+	local uid
+	uid=$(gql '{actor{user{id}}}' '{}' | jq -r '.data.actor.user.id')
+	need_id "$uid" "the user id for the mobile push destination"
+	jq -n --arg u "$uid" '{type:"MOBILE_PUSH", name:"Mobile push", properties:[{key:"userId", value:$u}]}'
 }
 
 # args: name spec_function
 ensure_destination() {
-	local name=$1 spec_fn=$2 id
+	local name=$1 spec_fn=$2 id spec
 	id=$(gql 'query($a:Int!){actor{account(id:$a){aiNotifications{destinations{entities{id name}}}}}}' \
 		"$(jq -n --argjson a "$ACCT" '{a:$a}')" |
 		jq -r --arg n "$name" '.data.actor.account.aiNotifications.destinations.entities[] | select(.name==$n) | .id')
 	if [ -z "$id" ]; then
+		spec=$("$spec_fn")
 		id=$(gql 'mutation($a:Int!,$d:AiNotificationsDestinationInput!){aiNotificationsCreateDestination(accountId:$a,destination:$d){destination{id}error{...on AiNotificationsResponseError{description}...on AiNotificationsConstraintsError{constraints{name}}}}}' \
-			"$("$spec_fn" | jq -c --argjson a "$ACCT" '{a:$a,d:.}')" |
+			"$(jq -c --argjson a "$ACCT" '{a:$a,d:.}' <<<"$spec")" |
 			jq -r '.data.aiNotificationsCreateDestination.destination.id')
 		need_id "$id" "destination $name"
 		echo "created destination $name ($id)" >&2
