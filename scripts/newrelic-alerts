@@ -79,7 +79,7 @@ ensure_condition() {
 
 pagerduty_destination() {
 	local key=${PAGERDUTY_ROUTING_KEY:-}
-	[ -n "$key" ] || key=$(kubectl -n monitoring get secret pagerduty-routing-key -o jsonpath='{.data.key}' | base64 -d)
+	[ -n "$key" ] || key=$(kubectl -n monitoring get secret pagerduty-routing-key -o jsonpath='{.data.key}' 2>/dev/null | base64 -d 2>/dev/null || true)
 	[ -n "$key" ] || {
 		echo "set PAGERDUTY_ROUTING_KEY or create the pagerduty-routing-key Secret (make pagerduty-secret)" >&2
 		exit 1
