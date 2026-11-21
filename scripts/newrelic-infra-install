@@ -47,6 +47,6 @@ printf 'license_key: %s\ndisplay_name: pi-pxe\nlog:\n  level: info\ncustom_attri
 
 "${SSH[@]}" 'sudo systemctl enable newrelic-infra && sudo systemctl restart newrelic-infra'
 sleep 10
-"${SSH[@]}" 'systemctl is-active --quiet newrelic-infra && [ "$(systemctl show -p NRestarts --value newrelic-infra)" = 0 ]' && { echo "newrelic-infra active on $HOST"; exit 0; }
+"${SSH[@]}" "systemctl is-active --quiet newrelic-infra && [ \"\$(systemctl show -p NRestarts --value newrelic-infra)\" = 0 ]" && { echo "newrelic-infra active on $HOST"; exit 0; }
 echo "ERROR: newrelic-infra is not stable on $HOST; check journalctl -u newrelic-infra" >&2
 exit 1
