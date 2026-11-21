@@ -67,7 +67,7 @@ spec:
               CERT=$(find /data/certificates -name '*.crt' ! -name '*.issuer.crt' | head -1)
               KEY=$(find /data/certificates -name '*.key' | head -1)
               echo "Cert: $CERT ($(wc -c < $CERT) bytes)"
-              for ns in traefik monitoring oauth2-proxy kubernetes-dashboard longhorn-system; do
+              for ns in traefik oauth2-proxy kubernetes-dashboard longhorn-system; do
                 kubectl create secret tls wildcard-k8s-tls \
                   --cert=$CERT --key=$KEY --namespace=$ns \
                   --dry-run=client -o yaml | kubectl apply -f -
