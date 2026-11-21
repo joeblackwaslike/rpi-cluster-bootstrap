@@ -99,7 +99,7 @@ Always use DNS01 with the lego CronJob.
 
 All `*.k8s` and explicit subdomains CNAME → `1ee1e71f-263e-4de6-a31b-7cb04cf79036.cfargotunnel.com.`
 
-Explicit records: `oauth.k8s`, `dashboard.k8s`, `longhorn.k8s`. The old `grafana.k8s`, `prometheus.k8s` and `alertmanager.k8s` records point at nothing now; delete them at Porkbun.
+Explicit records: `oauth.k8s`, `dashboard.k8s`, `longhorn.k8s`. The old `grafana.k8s`, `prometheus.k8s` and `alertmanager.k8s` records are redundant with the wildcard now; remove them at Porkbun when convenient.
 
 **Note:** `.nyc` TLD cannot use Cloudflare nameservers. Domain stays on Porkbun.
 
