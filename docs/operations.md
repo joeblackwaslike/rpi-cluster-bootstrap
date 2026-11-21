@@ -265,7 +265,7 @@ The PXE server (192.168.1.75, a Pi 4 with 897 MB of RAM) isn't in the cluster, s
 
 The host shows up as `pi-pxe` (`SystemSample`, with `role: pxe-server`). The script forwards the journald logs of dnsmasq, tftpd-hpa, nfs-mountd, tailscaled, chrony and docker, which you find with `SELECT * FROM Log WHERE hostname = 'pi-pxe'`. The agent can't start reading from the end of the journal, so the first run uploaded the existing history (about 400k tailscaled lines); New Relic drops anything older than 48 hours.
 
-Footprint on 2026-11-21: about 30 MB for the agent and 190 to 320 MB for its fluent-bit child while it read the history, with 330 to 360 MB still available. New Relic publishes no apt repo for Ubuntu 25.10, so the script uses the `noble` repo, whose arm64 package works. The license key is written to `/etc/newrelic-infra.yml` (mode 600). To remove the agent, `sudo apt-get purge newrelic-infra`, then delete `/etc/apt/sources.list.d/newrelic-infra.list` and `/etc/newrelic-infra/logging.d/pxe.yml`.
+Footprint on 2026-11-21: about 30 MB for the agent and 190 to 320 MB for its fluent-bit child while it read the history, with 330 to 360 MB still available. New Relic publishes no apt repo for Ubuntu 25.10, so the script uses the `noble` repo, whose arm64 package works. The license key is written to `/etc/newrelic-infra.yml` (mode 600). To remove the agent, `sudo apt-get purge newrelic-infra`, then delete `/etc/apt/sources.list.d/newrelic-infra.list`, `/usr/share/keyrings/newrelic-infra.gpg`, `/etc/newrelic-infra.yml` and `/etc/newrelic-infra/logging.d/pxe.yml`.
 
 ## Kernel page size (4 KB)
 

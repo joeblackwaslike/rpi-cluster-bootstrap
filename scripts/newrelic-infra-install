@@ -46,9 +46,7 @@ printf 'license_key: %s\ndisplay_name: pi-pxe\nlog:\n  level: info\ncustom_attri
 	"$NEW_RELIC_LICENSE_KEY" | "${SSH[@]}" "sudo sh -c 'umask 077 && cat >/etc/newrelic-infra.yml && chmod 600 /etc/newrelic-infra.yml'"
 
 "${SSH[@]}" 'sudo systemctl enable newrelic-infra && sudo systemctl restart newrelic-infra'
-for _ in 1 2 3 4 5; do
-	sleep 3
-	"${SSH[@]}" 'systemctl is-active --quiet newrelic-infra' && { echo "newrelic-infra active on $HOST"; exit 0; }
-done
-echo "ERROR: newrelic-infra is not active on $HOST; check journalctl -u newrelic-infra" >&2
+sleep 10
+"${SSH[@]}" 'systemctl is-active --quiet newrelic-infra && [ "$(systemctl show -p NRestarts --value newrelic-infra)" = 0 ]' && { echo "newrelic-infra active on $HOST"; exit 0; }
+echo "ERROR: newrelic-infra is not stable on $HOST; check journalctl -u newrelic-infra" >&2
 exit 1
