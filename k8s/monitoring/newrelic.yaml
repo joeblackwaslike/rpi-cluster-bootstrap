@@ -38,3 +38,72 @@ spec:
       enabled: true
     logging:
       enabled: true
+    newrelic-logging:
+      extraVolumes:
+        - name: run-journal
+          hostPath:
+            path: /run/log/journal
+            type: Directory
+      extraVolumeMounts:
+        - name: run-journal
+          mountPath: /run/log/journal
+          readOnly: true
+      fluentBit:
+        config:
+          extraInputs: |
+            [INPUT]
+                Name            systemd
+                Alias           k3s-journal
+                Tag             journal.*
+                Path            /run/log/journal
+                Systemd_Filter  _SYSTEMD_UNIT=k3s.service
+                Systemd_Filter  _SYSTEMD_UNIT=k3s-agent.service
+                Read_From_Tail  On
+                DB              /var/log/flb_systemd.db
+          lowDataModeFilters: |
+            [FILTER]
+                Name                kubernetes
+                Match               kube.*
+                Alias               kubernetes-enricher
+                Kube_URL            https://kubernetes.default.svc.cluster.local:443
+                Buffer_Size         ${K8S_BUFFER_SIZE}
+                K8S-Logging.Exclude ${K8S_LOGGING_EXCLUDE}
+                Labels              Off
+                Annotations         Off
+
+            [FILTER]
+                Name           nest
+                Match          kube.*
+                Alias          kubernetes-attribute-lifter
+                Operation      lift
+                Nested_under   kubernetes
+
+            [FILTER]
+                Name           record_modifier
+                Match          kube.*
+                Alias          pod-log-allowlist
+                Record         cluster_name ${CLUSTER_NAME}
+                Record         node_name ${NODE_NAME}
+                Allowlist_key  container_name
+                Allowlist_key  namespace_name
+                Allowlist_key  pod_name
+                Allowlist_key  stream
+                Allowlist_key  message
+                Allowlist_key  log
+
+            [FILTER]
+                Name     modify
+                Match    journal.*
+                Alias    journal-field-renamer
+                Rename   MESSAGE message
+                Rename   _SYSTEMD_UNIT unit
+
+            [FILTER]
+                Name           record_modifier
+                Match          journal.*
+                Alias          journal-allowlist
+                Record         cluster_name ${CLUSTER_NAME}
+                Record         node_name ${NODE_NAME}
+                Allowlist_key  message
+                Allowlist_key  unit
+                Allowlist_key  PRIORITY

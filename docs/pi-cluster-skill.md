@@ -209,6 +209,8 @@ To rotate the license key, update `.env`, run `make newrelic-secret`, then `kube
 
 Log forwarding is on (`logging.enabled`, fluent-bit as a DaemonSet). It needs two things the nodes now provide: 4 KB kernel pages (the image fails on the Pi 5 default of 16 KB; see Kernel page size) and `fs.inotify.max_user_instances = 512` (with `fs.inotify.max_user_watches = 524288`), because the default of 128 makes fluent-bit exit with `Too many open files` on a busy node. cloud-init sets both in `/etc/sysctl.d/99-k3s.conf` on new nodes. The three running nodes were patched by hand in `/etc/sysctl.d/99-inotify.conf`; use the same file on any other running node. fluent-bit's own counters (`/api/v1/metrics` on port 2020) show records processed and any output errors or retries.
 
+Every pod log record carries `node_name`. The control-plane logs (apiserver, kubelet, scheduler, etcd and containerd all run inside the `k3s` and `k3s-agent` units) reach New Relic from journald with `unit` and `node_name`; find them with `SELECT message FROM Log WHERE unit IN ('k3s.service', 'k3s-agent.service')`. The nodes keep their journal in memory, so `/var/log/journal` is empty and fluent-bit reads `/run/log/journal` through an extra hostPath mount.
+
 ## New Relic APM auto-instrumentation
 
 The k8s-agents-operator injects the New Relic agent into pods that opt in. `k8s/monitoring/newrelic-instrumentation.yaml` is the `Instrumentation` resource. Apply it with `kubectl apply -f` once the chart is installed (the `Instrumentation` CRD comes from the operator), and re-run `make newrelic-secret` first on an existing cluster so `newrelic-key-secret` exists. It targets pods labeled `instrument=true`, in any namespace, and injects the Node.js agent (`newrelic/newrelic-node-init`, pinned to `14.13.0`; bump the tag in the manifest to upgrade the agent, and check the image supports arm64). The selector uses `operator: In` with a list of values; the operator does not accept `Eq`.
@@ -231,6 +233,14 @@ Two policies, each with its own workflow:
 A New Relic notification channel can belong to only one workflow, which is why the push destination has two channels. The crash-looping-pod and failed-job conditions close their incident 5 minutes after their data disappears, because a filtered query has no rows once the problem clears.
 
 etcd metrics reach New Relic through an extra scrape job (`kube-etcd`, `192.168.1.149:2381`, pi-1's etcd metrics port) in the Prometheus agent's config in `k8s/monitoring/newrelic.yaml`. If pi-1's address changes, update the target there. The mobile push destination belongs to one user and needs that person logged in to the New Relic app.
+
+## New Relic on the PXE server
+
+The PXE server (192.168.1.75, a Pi 4 with 897 MB of RAM) isn't in the cluster, so it runs the New Relic infrastructure agent as a systemd service. `make newrelic-infra` installs it over SSH and is safe to re-run; it needs `NEW_RELIC_LICENSE_KEY` in `.env` and reads the host from `PXE_SERVER_IP` in `.env`, or takes it as `scripts/newrelic-infra-install <host>`.
+
+The host shows up as `pi-pxe` (`SystemSample`, with `role: pxe-server`). The script forwards the journald logs of dnsmasq, tftpd-hpa, nfs-mountd, tailscaled, chrony and docker, which you find with `SELECT * FROM Log WHERE hostname = 'pi-pxe'`. The agent can't start reading from the end of the journal, so the first run uploaded the existing history (about 400k tailscaled lines); New Relic drops anything older than 48 hours.
+
+Footprint on 2026-11-21: about 30 MB for the agent and 190 to 320 MB for its fluent-bit child while it read the history, with 330 to 360 MB still available. New Relic publishes no apt repo for Ubuntu 25.10, so the script uses the `noble` repo, whose arm64 package works. The license key is written to `/etc/newrelic-infra.yml` (mode 600). To remove the agent, `sudo apt-get purge newrelic-infra`, then delete `/etc/apt/sources.list.d/newrelic-infra.list`, `/usr/share/keyrings/newrelic-infra.gpg`, `/etc/newrelic-infra.yml` and `/etc/newrelic-infra/logging.d/pxe.yml`.
 
 ## Kernel page size (4 KB)
 
