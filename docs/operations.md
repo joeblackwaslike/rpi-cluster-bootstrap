@@ -76,7 +76,6 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 | External-DNS | external-dns | edns-porkbun/external-dns-porkbun-webhook | |
 | Cloudflare Tunnel | cloudflared | raw manifests | 2024.8.3, HTTP2 protocol |
 | Longhorn | longhorn-system | longhorn/longhorn | CSI kubeletRootDir patched |
-| kube-prometheus-stack | monitoring | prometheus-community | Grafana, Prometheus, Alertmanager |
 | Reloader | reloader | stakater/reloader | |
 | New Relic | newrelic | newrelic/nri-bundle | k3s HelmChart CR, eBPF agent off |
 | Kured | kured | kubereboot/kured | reboots 02-05 ET, /sentinel path |
@@ -108,9 +107,6 @@ Explicit records: `oauth.k8s`, `grafana.k8s`, `prometheus.k8s`, `dashboard.k8s`,
 
 | Service | URL |
 |---------|-----|
-| Grafana | https://grafana.k8s.joeblack.nyc |
-| Prometheus | https://prometheus.k8s.joeblack.nyc |
-| Alertmanager | https://alertmanager.k8s.joeblack.nyc |
 | Longhorn UI | https://longhorn.k8s.joeblack.nyc |
 | Dashboard | https://dashboard.k8s.joeblack.nyc |
 | oauth2-proxy | https://oauth.k8s.joeblack.nyc |
@@ -164,12 +160,6 @@ kubectl -n longhorn-system patch nodes.longhorn.io pi-1 --type merge \
 
 This keeps replica memory off the control-plane node. A pi-2 or pi-3 reboot leaves every volume on one replica until it comes back and rebuilds.
 
-## Prometheus Memory
-
-`helm/kube-prometheus-stack-values.yaml` drops the apiserver request/response histograms (about 100k of 211k series on 2026-11-19) and disables the `kubeApiserverAvailability`, `kubeApiserverBurnrate`, `kubeApiserverHistogram` and `kubeApiserverSlos` rule groups that read them. As a result, the "Kubernetes / API server" Grafana dashboard shows empty latency, availability and error-budget panels and the `KubeAPIErrorBudgetBurn` alert no longer exists. `KubeAPIDown` and `KubeClientCertificateExpiration` still fire.
-
-Prometheus has a 768Mi request and a 1536Mi limit. It used 1146 MiB before the drop and 827 MiB right after the restart with 7d retention. If it gets OOMKilled, raise the limit or shorten retention before re-adding the histograms.
-
 ## Cloudflare Tunnel
 
 **Tunnel ID:** `1ee1e71f-263e-4de6-a31b-7cb04cf79036`  
@@ -203,15 +193,12 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 **Prevention** (all on pi-1, installed by cloud-init):
 - `quota-backend-bytes=4294967296` raises the quota from the 2 GiB default.
 - `etcd-defrag.timer` runs `/usr/local/bin/etcd-defrag` Sundays at 04:00. It needs `/usr/local/bin/etcdctl`, which cloud-init installs pinned and checksummed.
-- `EtcdDbNearQuota` (over 70% of quota) and `EtcdUnstable` (etcd unreachable over 20% of 15 minutes) in `k8s/monitoring/etcd-rules.yaml`.
-- Alertmanager sends `warning` and `critical` alerts to ntfy.sh. Set `NTFY_TOPIC` in `.env` (`openssl rand -hex 8`), run `make ntfy-secret`, and subscribe to that topic in the ntfy app. Alert labels and text go to a public service, so keep secrets out of annotations.
+- New Relic alerts on etcd over 70% of quota and on etcd losing its leader or going silent (see New Relic alerts).
 - `etcd-expose-metrics: true` serves unauthenticated HTTP metrics on pi-1 port 2381, reachable from the LAN. They hold no secret values. Restricting the port to the Pis and the pod CIDR is an open follow-up.
 
 **Apply to a running pi-1** (cloud-init only runs on first boot):
 1. Merge the new keys into `/etc/rancher/k3s/config.yaml`, then `sudo systemctl restart k3s`. The API is down for 2-3 minutes; pods keep running.
 2. Copy `/usr/local/bin/etcd-defrag` and the two `etcd-defrag.*` units from `cloud-init/nodes/pi-1/user-data`, install `etcdctl` the same way, `sudo systemctl daemon-reload`, `sudo systemctl enable --now etcd-defrag.timer`.
-3. `make ntfy-secret`, then `tail -n +2 helm/kube-prometheus-stack-values.yaml | helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --version 84.5.0 --reuse-values -f -`, then `kubectl apply -f k8s/monitoring/etcd-rules.yaml`.
-4. If the upgrade fails on `Endpoints "kube-prometheus-stack-kube-etcd"`, delete that Service and Endpoints in `kube-system` and rerun it. Helm recreates them selector-less.
 
 **Recover from "database space exceeded"** (`journalctl -u k3s | grep 'space exceeded'` on pi-1):
 1. `sudo systemctl stop k3s`, then `sudo cp -a /var/lib/rancher/k3s/server/db/etcd/member/snap/db /var/lib/rancher/etcd-backup.db` (needs the disk space).
@@ -219,17 +206,16 @@ Compaction frees pages inside the file but never shrinks it, so a weekly defrag 
 3. With the etcd client flags from `/usr/local/bin/etcd-defrag` (the quota raise in step 2 keeps k3s up while you do this): get the revision from `etcdctl endpoint status -w fields | awk -F': ' '/"Revision"/{print $2}'`, run `etcdctl compact <revision>`, `etcdctl defrag` (use `--command-timeout=600s`, the default 5 s fails and k3s restarts), then `etcdctl alarm disarm`.
 4. Confirm `etcdctl endpoint status -w table` shows a small DB size, take a snapshot with `sudo k3s etcd-snapshot save`, and delete the backup copy.
 
-## Paging for severe alerts (PagerDuty)
+## PagerDuty key
 
-`critical` alerts go to PagerDuty as well as ntfy. PagerDuty turns each one into an incident with a link back to Alertmanager and Prometheus, and your own notification rules there decide the channel and timing (for example push at once, a phone call after 1 minute, an SMS after 3). The free plan allows 5 users and 100 SMS or phone notifications a month, so only `critical` is routed.
+The critical workflow in New Relic pages through PagerDuty, and `make newrelic-alerts` creates that destination from a PagerDuty Events API v2 integration key. The free plan allows 5 users and 100 SMS or phone notifications a month, so only critical alerts go there.
 
 1. In PagerDuty, create a service named `pi-cluster` with an **Events API v2** integration and copy its 32 character integration key.
 2. In the PagerDuty app, set your notification rules for high-urgency incidents (My Profile, Notification Rules).
-3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY` and run `make pagerduty-secret`. Do this before the helm upgrade: Alertmanager mounts the Secret, and without it the pod stays in ContainerCreating and no alert goes anywhere. Confirm it exists with `kubectl -n monitoring get secret pagerduty-routing-key -o name`.
-4. Apply: `tail -n +2 helm/kube-prometheus-stack-values.yaml | helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --version 84.5.0 --reuse-values -f -`, then wait for it with `kubectl -n monitoring rollout status statefulset/alertmanager-kube-prometheus-stack-alertmanager`.
-5. Test: `kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager -- amtool alert add PagerTest severity=critical namespace=monitoring --annotation=summary="paging test" --alertmanager.url=http://localhost:9093`. Expect the page after about 30 seconds (Alertmanager's group wait), then resolve the incident in PagerDuty.
+3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY` and run `make pagerduty-secret`, which stores it in the `pagerduty-routing-key` Secret in the `monitoring` namespace. The `monitoring` namespace stays for that Secret.
+4. Run `make newrelic-alerts`.
 
-Alertmanager's `externalUrl` and Prometheus's `externalUrl` are set to the live `*.joeblack.nyc` hostnames so the links in a page open from a phone. They differ from the `*.k8s` hosts in the Public URLs table; update both when issue #5 is reconciled. Labels and annotations are sent to PagerDuty too, so keep secrets out of them. PagerDuty only hears about problems Alertmanager can see: if the whole cluster is down, nothing pages.
+Labels and annotations reach PagerDuty too, so keep secrets out of them. New Relic only pages for problems it can see: if the whole cluster is down and nothing reports, the "silent" conditions are what fire.
 
 ## New Relic
 
