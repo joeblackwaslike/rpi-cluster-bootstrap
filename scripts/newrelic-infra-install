@@ -8,21 +8,21 @@ set -euo pipefail
 
 HOST=${1:-${PXE_SERVER_IP:-}}
 [ -n "$HOST" ] || { echo "ERROR: pass a host or set PXE_SERVER_IP" >&2; exit 1; }
-printf '%s' "${NEW_RELIC_LICENSE_KEY:-}" | LC_ALL=C grep -Eq '^[A-Za-z0-9]{36}NRAL$' ||
+[[ ${NEW_RELIC_LICENSE_KEY:-} =~ ^[A-Za-z0-9]{36}NRAL$ ]] ||
 	{ echo "ERROR: NEW_RELIC_LICENSE_KEY must be the 40 character key ending in NRAL" >&2; exit 1; }
 
-SSH=(ssh -i "$HOME/.ssh/pi-cluster" -o BatchMode=yes "pi@$HOST")
+SSH=(ssh -i "$HOME/.ssh/pi-cluster" -o BatchMode=yes -o IdentitiesOnly=yes "pi@$HOST")
 
 "${SSH[@]}" 'sudo bash -s' <<'REMOTE'
 set -euo pipefail
 if ! dpkg -s newrelic-infra >/dev/null 2>&1; then
-	curl -fsSL https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg |
+	curl -fsSL https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg </dev/null |
 		gpg --dearmor --yes -o /usr/share/keyrings/newrelic-infra.gpg
 	# New Relic publishes no repo for Ubuntu 25.10; the noble (24.04) arm64 package runs on it.
 	echo "deb [signed-by=/usr/share/keyrings/newrelic-infra.gpg] https://download.newrelic.com/infrastructure_agent/linux/apt noble main" \
 		>/etc/apt/sources.list.d/newrelic-infra.list
 	apt-get update
-	DEBIAN_FRONTEND=noninteractive apt-get install -y newrelic-infra
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::=--force-confold newrelic-infra </dev/null
 fi
 install -d /etc/newrelic-infra/logging.d
 cat >/etc/newrelic-infra/logging.d/pxe.yml <<'LOGS'
