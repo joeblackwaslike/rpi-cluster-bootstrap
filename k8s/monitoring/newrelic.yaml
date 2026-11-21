@@ -90,8 +90,6 @@ spec:
                 Allowlist_key  stream
                 Allowlist_key  message
                 Allowlist_key  log
-                Allowlist_key  cluster_name
-                Allowlist_key  node_name
 
             [FILTER]
                 Name     modify
@@ -109,5 +107,3 @@ spec:
                 Allowlist_key  message
                 Allowlist_key  unit
                 Allowlist_key  PRIORITY
-                Allowlist_key  cluster_name
-                Allowlist_key  node_name

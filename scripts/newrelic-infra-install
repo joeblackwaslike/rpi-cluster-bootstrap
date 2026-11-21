@@ -15,7 +15,7 @@ SSH=(ssh -i "$HOME/.ssh/pi-cluster" -o BatchMode=yes -o IdentitiesOnly=yes "pi@$
 
 "${SSH[@]}" 'sudo bash -s' <<'REMOTE'
 set -euo pipefail
-if ! dpkg -s newrelic-infra >/dev/null 2>&1; then
+if ! dpkg-query -W -f='${Status}' newrelic-infra 2>/dev/null | grep -q 'install ok installed'; then
 	curl -fsSL https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg </dev/null |
 		gpg --dearmor --yes -o /usr/share/keyrings/newrelic-infra.gpg
 	# New Relic publishes no repo for Ubuntu 25.10; the noble (24.04) arm64 package runs on it.
@@ -42,7 +42,13 @@ logs:
 LOGS
 REMOTE
 
-printf 'license_key: %s\ndisplay_name: pi-pxe\nlog:\n  level: info\ncustom_attributes:\n  role: pxe-server\n  cluster_name: cluster\n' \
+printf 'license_key: %s\ndisplay_name: pi-pxe\nlog:\n  level: info\ncustom_attributes:\n  role: pxe-server\n' \
 	"$NEW_RELIC_LICENSE_KEY" | "${SSH[@]}" "sudo sh -c 'umask 077 && cat >/etc/newrelic-infra.yml && chmod 600 /etc/newrelic-infra.yml'"
 
-"${SSH[@]}" 'sudo systemctl enable newrelic-infra >/dev/null 2>&1; sudo systemctl restart newrelic-infra; sleep 5; systemctl is-active newrelic-infra'
+"${SSH[@]}" 'sudo systemctl enable newrelic-infra && sudo systemctl restart newrelic-infra'
+for _ in 1 2 3 4 5; do
+	sleep 3
+	"${SSH[@]}" 'systemctl is-active --quiet newrelic-infra' && { echo "newrelic-infra active on $HOST"; exit 0; }
+done
+echo "ERROR: newrelic-infra is not active on $HOST; check journalctl -u newrelic-infra" >&2
+exit 1
