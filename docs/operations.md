@@ -259,6 +259,14 @@ A New Relic notification channel can belong to only one workflow, which is why t
 
 etcd metrics reach New Relic through an extra scrape job (`kube-etcd`, `192.168.1.149:2381`, pi-1's etcd metrics port) in the Prometheus agent's config in `k8s/monitoring/newrelic.yaml`. If pi-1's address changes, update the target there. The mobile push destination belongs to one user and needs that person logged in to the New Relic app.
 
+## New Relic on the PXE server
+
+The PXE server (192.168.1.75, a Pi 4 with 897 MB of RAM) isn't in the cluster, so it runs the New Relic infrastructure agent as a systemd service. `make newrelic-infra` installs it over SSH and is safe to re-run; it needs `NEW_RELIC_LICENSE_KEY` in `.env` and takes the host as `scripts/newrelic-infra-install <host>` (the Makefile passes `PXE_SERVER_IP`).
+
+The host shows up as `pi-pxe` (`SystemSample`, with `role: pxe-server`). The script forwards the journald logs of dnsmasq, tftpd-hpa, nfs-mountd, tailscaled, chrony and docker, which you find with `SELECT * FROM Log WHERE hostname = 'pi-pxe'`. The agent can't start reading from the end of the journal, so the first run uploaded the existing history (about 400k tailscaled lines); New Relic drops anything older than 48 hours.
+
+Footprint on 2026-11-21: about 30 MB for the agent and 190 to 320 MB for its fluent-bit child while it read the history, with 330 to 360 MB still available. New Relic publishes no apt repo for Ubuntu 25.10, so the script uses the `noble` repo, whose arm64 package works. The license key is written to `/etc/newrelic-infra.yml` (mode 600). To remove the agent, `sudo apt-get remove newrelic-infra` and delete `/etc/apt/sources.list.d/newrelic-infra.list`.
+
 ## Kernel page size (4 KB)
 
 The nodes boot `kernel8.img`, the common 64-bit kernel with 4 KB pages. A Pi 5's firmware loads `kernel_2712.img` by default, which uses 16 KB pages, and some arm64 images don't run on those: `newrelic-fluentbit-output` stops at start with `jemalloc: Unsupported system page size`.

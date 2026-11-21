@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Installs the New Relic infrastructure agent on a host outside the cluster (the PXE server)
+# and forwards its service logs from journald. Safe to re-run.
+#
+# Usage: scripts/newrelic-infra-install [host]    (default: PXE_SERVER_IP)
+# Needs NEW_RELIC_LICENSE_KEY in the environment (make exports .env) and SSH access as pi.
+set -euo pipefail
+
+HOST=${1:-${PXE_SERVER_IP:-}}
+[ -n "$HOST" ] || { echo "ERROR: pass a host or set PXE_SERVER_IP" >&2; exit 1; }
+printf '%s' "${NEW_RELIC_LICENSE_KEY:-}" | LC_ALL=C grep -Eq '^[A-Za-z0-9]{36}NRAL$' ||
+	{ echo "ERROR: NEW_RELIC_LICENSE_KEY must be the 40 character key ending in NRAL" >&2; exit 1; }
+
+SSH=(ssh -i "$HOME/.ssh/pi-cluster" -o BatchMode=yes "pi@$HOST")
+
+"${SSH[@]}" 'sudo bash -s' <<'REMOTE'
+set -euo pipefail
+if ! dpkg -s newrelic-infra >/dev/null 2>&1; then
+	curl -fsSL https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg |
+		gpg --dearmor --yes -o /usr/share/keyrings/newrelic-infra.gpg
+	# New Relic publishes no repo for Ubuntu 25.10; the noble (24.04) arm64 package runs on it.
+	echo "deb [signed-by=/usr/share/keyrings/newrelic-infra.gpg] https://download.newrelic.com/infrastructure_agent/linux/apt noble main" \
+		>/etc/apt/sources.list.d/newrelic-infra.list
+	apt-get update
+	DEBIAN_FRONTEND=noninteractive apt-get install -y newrelic-infra
+fi
+install -d /etc/newrelic-infra/logging.d
+cat >/etc/newrelic-infra/logging.d/pxe.yml <<'LOGS'
+logs:
+  - name: pxe-dnsmasq
+    systemd: dnsmasq
+  - name: pxe-tftpd
+    systemd: tftpd-hpa
+  - name: pxe-nfs-mountd
+    systemd: nfs-mountd
+  - name: pxe-tailscaled
+    systemd: tailscaled
+  - name: pxe-chrony
+    systemd: chrony
+  - name: pxe-docker
+    systemd: docker
+LOGS
+REMOTE
+
+printf 'license_key: %s\ndisplay_name: pi-pxe\nlog:\n  level: info\ncustom_attributes:\n  role: pxe-server\n  cluster_name: cluster\n' \
+	"$NEW_RELIC_LICENSE_KEY" | "${SSH[@]}" "sudo sh -c 'umask 077 && cat >/etc/newrelic-infra.yml && chmod 600 /etc/newrelic-infra.yml'"
+
+"${SSH[@]}" 'sudo systemctl enable newrelic-infra >/dev/null 2>&1; sudo systemctl restart newrelic-infra; sleep 5; systemctl is-active newrelic-infra'

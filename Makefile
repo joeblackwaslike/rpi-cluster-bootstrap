@@ -8,7 +8,7 @@ PXE_IMG       := img/pi-pxe-ready.img
 LOOP_DEV      := /dev/loop0
 MOUNT_BOOT    := /mnt/pxe-boot
 
-.PHONY: all download pxe-image flash clean check-env pagerduty-secret newrelic-secret newrelic-alerts
+.PHONY: all download pxe-image flash clean check-env pagerduty-secret newrelic-secret newrelic-alerts newrelic-infra
 
 all: pxe-image
 
@@ -38,6 +38,9 @@ newrelic-secret:
 
 newrelic-alerts:
 	@scripts/newrelic-alerts
+
+newrelic-infra:
+	@scripts/newrelic-infra-install
 
 download: $(PIOSS_IMG)
 
