@@ -20,6 +20,7 @@ check-env:
 # A PagerDuty Events API v2 integration key: 32 letters and digits
 pagerduty-secret:
 	@printf '%s' "$$PAGERDUTY_ROUTING_KEY" | grep -Eq '^[A-Za-z0-9]{32}$$' || (echo "ERROR: PAGERDUTY_ROUTING_KEY must be set in .env to the 32 character Events API v2 integration key" && exit 1)
+	@kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 	@kubectl -n monitoring create secret generic pagerduty-routing-key \
 		--from-literal=key="$$PAGERDUTY_ROUTING_KEY" \
 		--dry-run=client -o yaml | kubectl apply -f -

@@ -80,7 +80,7 @@ use p2 for ALL kubelet data including pod volumes and CSI plugin sockets.
 **Wildcard cert:** `*.k8s.joeblack.nyc` via Let's Encrypt DNS01 + Porkbun API.
 
 - Obtained by `lego` CronJob (`lego-cert-renewal` in cert-manager namespace)
-- Stored as `wildcard-k8s-tls` Secret in: traefik, monitoring, oauth2-proxy, kubernetes-dashboard, longhorn-system
+- Stored as `wildcard-k8s-tls` Secret in: traefik, oauth2-proxy, kubernetes-dashboard, longhorn-system
 - Renewal: auto-runs 1st of each month; runs `lego renew --days 30` then falls back to `lego run`
 - **LE rate limit:** 5 certs per 7 days for exact domain set. Don't spam re-issue.
 
@@ -91,7 +91,7 @@ Always use DNS01 with the lego CronJob.
 
 All `*.k8s` and explicit subdomains CNAME → `1ee1e71f-263e-4de6-a31b-7cb04cf79036.cfargotunnel.com.`
 
-Explicit records: `oauth.k8s`, `grafana.k8s`, `prometheus.k8s`, `dashboard.k8s`, `longhorn.k8s`, `alertmanager.k8s`
+Explicit records: `oauth.k8s`, `dashboard.k8s`, `longhorn.k8s`. The old `grafana.k8s`, `prometheus.k8s` and `alertmanager.k8s` records point at nothing now; delete them at Porkbun.
 
 **Note:** `.nyc` TLD cannot use Cloudflare nameservers. Domain stays on Porkbun.
 
@@ -187,10 +187,10 @@ The critical workflow in New Relic pages through PagerDuty, and `make newrelic-a
 
 1. In PagerDuty, create a service named `pi-cluster` with an **Events API v2** integration and copy its 32 character integration key.
 2. In the PagerDuty app, set your notification rules for high-urgency incidents (My Profile, Notification Rules).
-3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY` and run `make pagerduty-secret`, which stores it in the `pagerduty-routing-key` Secret in the `monitoring` namespace. The `monitoring` namespace stays for that Secret.
+3. Put the key in `.env` as `PAGERDUTY_ROUTING_KEY`. `make newrelic-alerts` reads it from there. `make pagerduty-secret` also stores it in the `pagerduty-routing-key` Secret in the `monitoring` namespace, so the script can find it without `.env`.
 4. Run `make newrelic-alerts`.
 
-Labels and annotations reach PagerDuty too, so keep secrets out of them. New Relic only pages for problems it can see: if the whole cluster is down and nothing reports, the "silent" conditions are what fire.
+Condition names and NRQL results reach PagerDuty, so keep secrets out of them. New Relic only pages for problems it can see: if the whole cluster is down and nothing reports, the "silent" conditions are what fire.
 
 ## New Relic
 
