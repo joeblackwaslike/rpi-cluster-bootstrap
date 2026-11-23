@@ -53,11 +53,17 @@ spec:
           extraInputs: |
             [INPUT]
                 Name            systemd
-                Alias           k3s-journal
+                Alias           host-journal
                 Tag             journal.*
                 Path            /run/log/journal
                 Systemd_Filter  _SYSTEMD_UNIT=k3s.service
                 Systemd_Filter  _SYSTEMD_UNIT=k3s-agent.service
+                Systemd_Filter  _TRANSPORT=kernel
+                Systemd_Filter  PRIORITY=0
+                Systemd_Filter  PRIORITY=1
+                Systemd_Filter  PRIORITY=2
+                Systemd_Filter  PRIORITY=3
+                Systemd_Filter  PRIORITY=4
                 Read_From_Tail  On
                 DB              /var/log/flb_systemd.db
           lowDataModeFilters: |
@@ -97,6 +103,14 @@ spec:
                 Alias    journal-field-renamer
                 Rename   MESSAGE message
                 Rename   _SYSTEMD_UNIT unit
+                Rename   _TRANSPORT transport
+                Rename   SYSLOG_IDENTIFIER identifier
+
+            [FILTER]
+                Name     grep
+                Match    journal.*
+                Alias    journal-audit-excluder
+                Exclude  message ^(audit:|kauditd_printk_skb)
 
             [FILTER]
                 Name           record_modifier
@@ -106,4 +120,6 @@ spec:
                 Record         node_name ${NODE_NAME}
                 Allowlist_key  message
                 Allowlist_key  unit
+                Allowlist_key  transport
+                Allowlist_key  identifier
                 Allowlist_key  PRIORITY
