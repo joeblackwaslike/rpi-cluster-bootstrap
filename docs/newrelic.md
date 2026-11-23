@@ -43,8 +43,8 @@ Queries to start from:
 ```sql
 SELECT message FROM Log WHERE node_name = 'pi-2' SINCE 1 hour ago
 SELECT message FROM Log WHERE unit IN ('k3s.service', 'k3s-agent.service') SINCE 1 hour ago
-SELECT message FROM Log WHERE transport = 'kernel' FACET node_name SINCE 1 day ago
-SELECT message FROM Log WHERE PRIORITY IN ('0','1','2','3','4') FACET unit, transport SINCE 7 days ago
+SELECT node_name, unit, message FROM Log WHERE transport = 'kernel' SINCE 1 day ago
+SELECT node_name, unit, transport, message FROM Log WHERE PRIORITY IN ('0','1','2','3','4') SINCE 7 days ago
 SELECT message FROM Log WHERE hostname = 'pi-pxe' SINCE 1 hour ago
 SELECT count(*) FROM Log FACET node_name SINCE 15 minutes ago
 ```
