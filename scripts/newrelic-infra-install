@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the New Relic infrastructure agent on a host outside the cluster (the PXE server)
-# and forwards its service logs from journald. Safe to re-run.
+# and forwards its service logs from journald and /var/log/kern.log. Safe to re-run.
 #
 # Usage: scripts/newrelic-infra-install [host]    (default: PXE_SERVER_IP)
 # Needs NEW_RELIC_LICENSE_KEY in the environment (make exports .env) and SSH access as pi.

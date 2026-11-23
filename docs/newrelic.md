@@ -18,7 +18,7 @@ Account `8755228`, US region, cluster name `cluster`. Sign in at [one.newrelic.c
 
 Settings that shape the data: `global.lowDataMode: true` (drops low-value attributes and metrics), the eBPF agent is off for memory, and the license key never touches the repo (`.env` and the `newrelic-license` Secret).
 
-The nodes are Pi 5s booting `kernel8.img` (4 KB pages); the fluent-bit image needs that. `lima-mac-1`, a fourth node, runs the same DaemonSets.
+The Pi 5 nodes boot `kernel8.img` (4 KB pages); the fluent-bit image needs that.
 
 ## Logs
 
@@ -26,11 +26,11 @@ fluent-bit sends three streams. All records carry `cluster_name` and `node_name`
 
 | Stream | Filter in New Relic | Notes |
 |---|---|---|
-| Pod logs | `namespace_name`, `pod_name`, `container_name` | Every namespace |
+| Pod logs | `namespace_name`, `pod_name`, `container_name` | Every namespace and pod (`K8S-Logging.Exclude` is off, so annotations can't opt a pod out) |
 | k3s journal | `unit IN ('k3s.service', 'k3s-agent.service')` | apiserver, kubelet, scheduler, etcd and containerd all log inside these units |
 | Kernel and warnings | `transport = 'kernel'`, or `PRIORITY` of 4 or lower | Kernel ring buffer plus warning-and-worse from any unit. `audit:` lines are dropped (up to about 9,000 a day on one node, from iptables and BPF program loads) |
 
-The nodes keep journald in memory, so the journal sits in `/run/log/journal`, and the DaemonSet mounts that path. The PXE server sends its own logs: dnsmasq, tftpd-hpa, nfs-mountd, tailscaled, chrony and docker from journald, plus `/var/log/kern.log`.
+The nodes keep journald in memory, so the journal sits in `/run/log/journal`, and the DaemonSet mounts that path. The PXE server sends its own logs: dnsmasq, tftpd-hpa, nfs-mountd, tailscaled, chrony and docker from journald, plus `/var/log/kern.log`, unfiltered (that file holds no `audit:` lines and only grows when the kernel logs something).
 
 Where to look:
 
@@ -44,12 +44,12 @@ Queries to start from:
 SELECT message FROM Log WHERE node_name = 'pi-2' SINCE 1 hour ago
 SELECT message FROM Log WHERE unit IN ('k3s.service', 'k3s-agent.service') SINCE 1 hour ago
 SELECT message FROM Log WHERE transport = 'kernel' FACET node_name SINCE 1 day ago
-SELECT message FROM Log WHERE transport = 'kernel' AND PRIORITY <= 4 SINCE 7 days ago
+SELECT message FROM Log WHERE PRIORITY IN ('0','1','2','3','4') FACET unit, transport SINCE 7 days ago
 SELECT message FROM Log WHERE hostname = 'pi-pxe' SINCE 1 hour ago
 SELECT count(*) FROM Log FACET node_name SINCE 15 minutes ago
 ```
 
-Kernel messages worth searching for: `Out of memory`, `Killed process`, `Undervoltage`, `nvme`, `I/O error`, `EXT4-fs error`.
+`PRIORITY` is a string (`'0'` to `'7'`, lower is worse), so compare it with `IN`, not `<=`. Kernel messages worth searching for: `Out of memory`, `Killed process`, `Undervoltage`, `nvme`, `I/O error`, `EXT4-fs error`.
 
 ## Metrics and events
 
@@ -66,23 +66,26 @@ No custom dashboards exist in the account. The **Kubernetes** explorer and **Inf
 
 ## APM
 
-The operator injects the Node.js agent into pods labeled `instrument=true` (set on the pod template, not only the Deployment). The `Instrumentation` resource is `k8s/monitoring/newrelic-instrumentation.yaml`. A workload needs a glibc-based Node image; Bun and Alpine (musl) images can't use the agent. No production workload is instrumented yet. Once one is, find it under **APM & Services**. Setup steps are in [operations.md](operations.md#new-relic-apm-auto-instrumentation).
+The operator injects the Node.js agent into pods labeled `instrument=true` (set on the pod template, not only the Deployment). `NEW_RELIC_APP_NAME` on the container sets the name shown under APM. The `Instrumentation` resource is `k8s/monitoring/newrelic-instrumentation.yaml`. A workload needs a glibc-based Node image; Bun and Alpine (musl) images can't use the agent. No production workload is instrumented yet. Once one is, find it under **APM & Services**. Setup steps are in [operations.md](operations.md#new-relic-apm-auto-instrumentation).
 
 The operator's own logs appear under the mutated pod's name: `SELECT message FROM Log WHERE logger = 'mutation-webhook'`.
 
 ## Alerts
 
-`make newrelic-alerts` builds everything below through the NerdGraph API and is safe to re-run. View incidents under **Alerts**, then **Issues & activity**.
+`make newrelic-alerts` builds everything below through the NerdGraph API and is safe to re-run. It skips anything that already exists, so editing a threshold in `scripts/newrelic-alerts` does not change a live condition; edit it in New Relic or delete it and re-run. The NRQL behind each condition is in that script. View incidents under Alerts, then Issues & activity.
 
 | Policy | Notifies | Conditions (all 5 to 15 minutes of sustained breach) |
 |---|---|---|
-| Pi cluster critical (`8366486`) | PagerDuty and mobile push | Node not ready or silent, etcd has no leader or is silent |
-| Pi cluster warning (`8366487`) | Mobile push | Node memory over 92%, node disk over 85%, volume over 85%, etcd over 70% of quota, pod crash looping, deployment missing replicas, job failed |
+| Pi cluster critical | PagerDuty and mobile push | Node not ready or silent, etcd has no leader or is silent |
+| Pi cluster warning | Mobile push | Node memory over 92%, node disk over 85%, volume over 85%, etcd over 70% of quota, pod crash looping, deployment missing replicas, job failed |
 
 Because the node and etcd conditions fire when data stops, a node that dies completely still pages. Nothing yet alerts when the PXE server goes quiet.
 
 ## Known behavior
 
+Observed on 2026-11-23 unless noted.
+
+- A fourth node, `lima-mac-1` (not a Pi), joined the cluster on 2026-11-21. It gets the same DaemonSets and appears in the queries above; the topology docs list only the three Pis.
 - The PXE server has 897 MB of RAM. On first install the agent's fluent-bit child read the whole journal and the kernel killed `newrelic-infra` once (2026-11-22 01:37, `kern.log`). dnsmasq, tftpd and NFS were not affected, and the agent has been stable since.
 - Journal logs older than 48 hours are dropped by New Relic, so history uploaded on a fresh install is trimmed.
 - avahi-daemon logs about 2,500 warnings a day on pi-1 and pi-3 and passes the warning filter.

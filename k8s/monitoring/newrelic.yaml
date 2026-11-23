@@ -53,7 +53,7 @@ spec:
           extraInputs: |
             [INPUT]
                 Name            systemd
-                Alias           k3s-journal
+                Alias           host-journal
                 Tag             journal.*
                 Path            /run/log/journal
                 Systemd_Filter  _SYSTEMD_UNIT=k3s.service
