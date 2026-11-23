@@ -39,6 +39,8 @@ logs:
     systemd: chrony
   - name: pxe-docker
     systemd: docker
+  - name: pxe-kernel
+    file: /var/log/kern.log
 LOGS
 REMOTE
 
