@@ -57,12 +57,12 @@ ensure_policy() {
 	printf '%s' "$id"
 }
 
-# args: policy_id name nrql operator threshold duration_seconds priority [signal_loss_seconds [open_on_loss]]
+# args: policy_id name nrql operator threshold duration_seconds priority [signal_loss_seconds [open_on_loss [aggregation_window_seconds]]]
 # A condition on a filtered query has no data once the problem clears, so it needs
 # signal_loss_seconds with open_on_loss=false to close its incident; for a
 # condition whose silence is itself the problem, leave open_on_loss true.
 ensure_condition() {
-	local pid=$1 name=$2 nrql=$3 op=$4 thr=$5 dur=$6 prio=$7 loss=${8:-0} open=${9:-true}
+	local pid=$1 name=$2 nrql=$3 op=$4 thr=$5 dur=$6 prio=$7 loss=${8:-0} open=${9:-true} win=${10:-60}
 	local existing
 	existing=$(gql 'query($a:Int!,$p:ID!){actor{account(id:$a){alerts{nrqlConditionsSearch(searchCriteria:{policyId:$p}){nrqlConditions{name}}}}}}' \
 		"$(jq -n --argjson a "$ACCT" --arg p "$pid" '{a:$a,p:$p}')" |
@@ -70,9 +70,9 @@ ensure_condition() {
 	[ -n "$existing" ] && return 0
 	local cond
 	cond=$(jq -n --arg name "$name" --arg nrql "$nrql" --arg op "$op" --argjson thr "$thr" \
-		--argjson dur "$dur" --arg prio "$prio" --argjson loss "$loss" --argjson open "$open" '
+		--argjson dur "$dur" --arg prio "$prio" --argjson loss "$loss" --argjson open "$open" --argjson win "$win" '
     {name:$name, enabled:true, nrql:{query:$nrql},
-     signal:{aggregationWindow:60, aggregationMethod:"EVENT_FLOW", aggregationDelay:120},
+     signal:{aggregationWindow:$win, aggregationMethod:"EVENT_FLOW", aggregationDelay:(if $win > 60 then 900 else 120 end)},
      terms:[{threshold:$thr, thresholdDuration:$dur, thresholdOccurrences:"ALL", operator:$op, priority:$prio}],
      valueFunction:"SINGLE_VALUE", violationTimeLimitSeconds:86400}
     + (if $loss > 0 then {expiration:{expirationDuration:$loss, openViolationOnExpiration:$open, closeViolationsOnExpiration:true}} else {} end)')
@@ -185,5 +185,7 @@ ensure_condition "$WARN" "Deployment missing replicas" \
 	"SELECT latest(podsMissing) FROM K8sDeploymentSample WHERE clusterName = 'cluster' FACET namespaceName, deploymentName" ABOVE 0 900 CRITICAL 300 false
 ensure_condition "$WARN" "Job failed" \
 	"SELECT uniqueCount(jobName) FROM K8sJobSample WHERE clusterName = 'cluster' AND failed = 'true' FACET namespaceName" ABOVE 0 300 CRITICAL 300 false
+ensure_condition "$WARN" "New Relic ingest over 0.15 GB per hour" \
+	"SELECT sum(GigabytesIngested) FROM NrConsumption WHERE productLine = 'DataPlatform'" ABOVE 0.15 3600 CRITICAL 0 false 3600
 
 echo "done"

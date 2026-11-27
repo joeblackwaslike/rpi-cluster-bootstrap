@@ -12,7 +12,7 @@ Account `8755228`, US region, cluster name `cluster`. Sign in at [one.newrelic.c
 | Kubernetes integration (`nrk8s-kubelet`, `nrk8s-controlplane`, `nrk8s-ksm`) | One pod per node, plus one for kube-state-metrics | Node, pod, container, volume, deployment and job state (`K8s*Sample` events) |
 | `newrelic-logging` (fluent-bit) | DaemonSet, one per node | Pod logs, k3s journal, kernel messages (see Logs) |
 | `nri-kube-events` | Deployment | Kubernetes events (`InfrastructureEvent`) |
-| `newrelic-prometheus-agent` | StatefulSet | Prometheus metrics, including the extra `kube-etcd` scrape of `192.168.1.149:2381` (pi-1's etcd) |
+| `newrelic-prometheus-agent` | StatefulSet | Prometheus metrics: Traefik, plus the extra `kube-etcd` scrape of `192.168.1.149:2381` (pi-1's etcd), cut to the three metrics the alerts use |
 | `k8s-agents-operator` + `nri-metadata-injection` | Deployments | APM auto-instrumentation (see APM) |
 | `newrelic-infra` | systemd service on the PXE server (`pi-pxe`, 192.168.1.75) | Host metrics and logs, installed by `make newrelic-infra` |
 
@@ -26,7 +26,7 @@ fluent-bit sends three streams. All records carry `cluster_name` and `node_name`
 
 | Stream | Filter in New Relic | Notes |
 |---|---|---|
-| Pod logs | `namespace_name`, `pod_name`, `container_name` | Every namespace and pod (`K8S-Logging.Exclude` is off, so annotations can't opt a pod out) |
+| Pod logs | `namespace_name`, `pod_name`, `container_name` | Every namespace and pod except `nzbget` (dropped by a fluent-bit `grep` filter; `K8S-Logging.Exclude` is off, so annotations can't opt a pod out) |
 | k3s journal | `unit IN ('k3s.service', 'k3s-agent.service')` | apiserver, kubelet, scheduler, etcd and containerd all log inside these units |
 | Kernel and warnings | `transport = 'kernel'`, or `PRIORITY` of 4 or lower | Kernel ring buffer plus warning-and-worse from any unit. `audit:` lines are dropped (up to about 9,000 a day on one node, from iptables and BPF program loads) |
 
@@ -70,6 +70,35 @@ The operator injects the Node.js agent into pods labeled `instrument=true` (set 
 
 The operator's own logs appear under the mutated pod's name: `SELECT message FROM Log WHERE logger = 'mutation-webhook'`.
 
+## Data budget
+
+The free tier allows 100 GB a month, about 3.3 GB a day, and [stops ingest until the 1st of the next month once it's used](https://newrelic.com/info/pricing). The first install used all of it in under six days (2026-11-19 to 2026-11-24). Logs were 3 GB of about 101 GB.
+
+| What | GB | Cause |
+|---|---|---|
+| Prometheus metrics | 72 | The integrations filter was off, so the agent scraped every annotated pod every 30 seconds. `prometheus-node-exporter` from the old kube-prometheus-stack was 55 GB of it, until that stack was removed on 2026-11-21. The rest was cert-manager, kube-dns and the etcd scrape, which kept every etcd metric for 1.5 GB a day |
+| Kubernetes object data | 22.5 | Pod, container, volume and deployment samples for every namespace, every 30 seconds |
+| Logs | 3.1 | `nzbget` alone wrote 2.2 million lines in two days (about 930 MB), looping on "Cancelling hanging download" |
+| Host data | 3.0 | Node and PXE host samples |
+
+Without the node-exporter spike the cluster still sent about 10 GB a day. Since then:
+
+- The Prometheus integrations filter is on and allows only Traefik. The etcd scrape keeps `etcd_server_has_leader`, `etcd_mvcc_db_total_size_in_bytes` and `etcd_server_quota_backend_bytes`.
+- The Kubernetes integration runs every 40 seconds (the chart's maximum) and skips these namespaces: `newrelic`, `longhorn-system`, `metallb-system`, `kubernetes-dashboard`, `tailscale`, `cloudflared`, `cloudflare-operator-system`, `cert-manager`, `cert-manager-porkbun`. A crash loop or missing replica in one of them no longer alerts. Node, volume, etcd and every other namespace still do.
+- `nzbget` logs are dropped.
+
+The estimate after these changes is about 2.7 GB a day, roughly 84 GB a month. That is a projection from the 2026-11-22 to 2026-11-24 measurements, not a measured rate.
+
+To check usage:
+
+```sql
+SELECT sum(GigabytesIngested) FROM NrConsumption WHERE productLine = 'DataPlatform' FACET usageMetric SINCE 1 day ago
+SELECT bytecountestimate() / 1e9 FROM Metric FACET job SINCE 1 day ago
+SELECT bytecountestimate() / 1e9 FROM K8sContainerSample, K8sPodSample, K8sVolumeSample FACET namespaceName SINCE 1 day ago
+```
+
+If the daily total goes above 3.3 GB, find the source with those queries before adding anything new. The warning alert is a spike detector, not a budget guard: it fires at 0.15 GB in an hour (3.6 GB a day), so a steady 3.3 to 3.6 GB a day stays quiet. Check the queries above weekly.
+
 ## Alerts
 
 `make newrelic-alerts` builds everything below through the NerdGraph API and is safe to re-run. It skips anything that already exists, so editing a threshold in `scripts/newrelic-alerts` does not change a live condition; edit it in New Relic or delete it and re-run. The NRQL behind each condition is in that script. View incidents under Alerts, then Issues & activity.
@@ -77,7 +106,7 @@ The operator's own logs appear under the mutated pod's name: `SELECT message FRO
 | Policy | Notifies | Conditions (all 5 to 15 minutes of sustained breach) |
 |---|---|---|
 | Pi cluster critical | PagerDuty and mobile push | Node not ready or silent, etcd has no leader or is silent |
-| Pi cluster warning | Mobile push | Node memory over 92%, node disk over 85%, volume over 85%, etcd over 70% of quota, pod crash looping, deployment missing replicas, job failed |
+| Pi cluster warning | Mobile push | Node memory over 92%, node disk over 85%, volume over 85%, etcd over 70% of quota, pod crash looping, deployment missing replicas, job failed, ingest over 0.15 GB in an hour |
 
 Because the node and etcd conditions fire when data stops, a node that dies completely still pages. Nothing yet alerts when the PXE server goes quiet.
 

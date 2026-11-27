@@ -27,11 +27,34 @@ spec:
       config:
         kubernetes:
           integrations_filter:
-            enabled: false
+            enabled: true
+            app_values: ["traefik"]
         extra_scrape_configs:
           - job_name: kube-etcd
             static_configs:
               - targets: ["192.168.1.149:2381"]
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: etcd_server_has_leader|etcd_mvcc_db_total_size_in_bytes|etcd_server_quota_backend_bytes
+                action: keep
+    newrelic-infrastructure:
+      common:
+        config:
+          interval: 40s
+          namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: NotIn
+                values:
+                  - newrelic
+                  - longhorn-system
+                  - metallb-system
+                  - kubernetes-dashboard
+                  - tailscale
+                  - cloudflared
+                  - cloudflare-operator-system
+                  - cert-manager
+                  - cert-manager-porkbun
     nr-ebpf-agent:
       enabled: false
     k8s-agents-operator:
@@ -83,6 +106,12 @@ spec:
                 Alias          kubernetes-attribute-lifter
                 Operation      lift
                 Nested_under   kubernetes
+
+            [FILTER]
+                Name     grep
+                Match    kube.*
+                Alias    nzbget-log-excluder
+                Exclude  pod_name ^nzbget
 
             [FILTER]
                 Name           record_modifier
