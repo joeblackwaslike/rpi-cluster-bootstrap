@@ -72,7 +72,7 @@ ensure_condition() {
 	cond=$(jq -n --arg name "$name" --arg nrql "$nrql" --arg op "$op" --argjson thr "$thr" \
 		--argjson dur "$dur" --arg prio "$prio" --argjson loss "$loss" --argjson open "$open" --argjson win "$win" '
     {name:$name, enabled:true, nrql:{query:$nrql},
-     signal:{aggregationWindow:$win, aggregationMethod:"EVENT_FLOW", aggregationDelay:120},
+     signal:{aggregationWindow:$win, aggregationMethod:"EVENT_FLOW", aggregationDelay:(if $win > 60 then 900 else 120 end)},
      terms:[{threshold:$thr, thresholdDuration:$dur, thresholdOccurrences:"ALL", operator:$op, priority:$prio}],
      valueFunction:"SINGLE_VALUE", violationTimeLimitSeconds:86400}
     + (if $loss > 0 then {expiration:{expirationDuration:$loss, openViolationOnExpiration:$open, closeViolationsOnExpiration:true}} else {} end)')

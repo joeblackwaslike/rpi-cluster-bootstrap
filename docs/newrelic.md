@@ -97,7 +97,7 @@ SELECT bytecountestimate() / 1e9 FROM Metric FACET job SINCE 1 day ago
 SELECT bytecountestimate() / 1e9 FROM K8sContainerSample, K8sPodSample, K8sVolumeSample FACET namespaceName SINCE 1 day ago
 ```
 
-If the daily total goes above 3.3 GB, find the source with those queries before adding anything new. The warning alert fires at 0.15 GB in an hour, which is 3.6 GB a day.
+If the daily total goes above 3.3 GB, find the source with those queries before adding anything new. The warning alert is a spike detector, not a budget guard: it fires at 0.15 GB in an hour (3.6 GB a day), so a steady 3.3 to 3.6 GB a day stays quiet. Check the queries above weekly.
 
 ## Alerts
 
